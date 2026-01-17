@@ -1,0 +1,81 @@
+# WordPress
+.htaccess
+wp-config.php
+wp-content/uploads/
+wp-content/blogs.dir/
+wp-content/upgrade/
+wp-content/backup-db/
+wp-content/advanced-cache.php
+wp-content/wp-cache-config.php
+wp-content/cache/
+wp-content/cache/supercache/
+
+# WordPress.org plugin repository assets
+# These go in SVN, not GitHub
+.wordpress-org/
+
+# IDE and Editor files
+.vscode/
+.idea/
+.claude/
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Node modules (if you add build tools later)
+node_modules/
+package-lock.json
+yarn.lock
+
+# Build files
+dist/
+build/
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Composer
+vendor/
+composer.lock
+composer.phar
+
+# PHPUnit
+phpunit.xml.local
+.phpunit.result.cache
+.phpunit.cache/
+
+# Jest (if adding JavaScript tests later)
+.jest-cache/
+jest-results.json
+
+# Coverage
+coverage/
+clover.xml
+*.coverage
+coverage.xml
+.nyc_output/

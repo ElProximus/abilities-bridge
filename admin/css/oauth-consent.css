@@ -1,0 +1,283 @@
+/**
+ * OAuth Consent Screen Styles
+ *
+ * @package Abilities_Bridge
+ */
+
+* {
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0;
+}
+
+body {
+	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen-Sans, Ubuntu, Cantarell, 'Helvetica Neue', sans-serif;
+	background: #f0f0f1;
+	color: #2c3338;
+	line-height: 1.6;
+}
+
+.oauth-container {
+	max-width: 600px;
+	margin-top: 40px;
+	background: #fff;
+	border-radius: 8px;
+	box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+	overflow: hidden;
+}
+
+.oauth-header {
+	background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
+	color: #fff;
+	padding: 30px;
+	text-align: center;
+}
+
+.oauth-header h1 {
+	font-size: 24px;
+	font-weight: 600;
+	margin-bottom: 8px;
+	color: #fff;
+}
+
+.oauth-header p {
+	font-size: 14px;
+	opacity: 0.9;
+}
+
+.oauth-body {
+	padding: 30px;
+}
+
+.app-info {
+	text-align: center;
+	margin-bottom: 30px;
+	padding-bottom: 30px;
+	border-bottom: 1px solid #e0e0e0;
+}
+
+.app-icon {
+	width: 64px;
+	height: 64px;
+	background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+	border-radius: 12px;
+	margin: 0 auto 15px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 32px;
+	color: #fff;
+}
+
+.app-name {
+	font-size: 20px;
+	font-weight: 600;
+	color: #1d2327;
+	margin-bottom: 5px;
+}
+
+.app-description {
+	font-size: 14px;
+	color: #646970;
+}
+
+.permissions-section {
+	margin-bottom: 30px;
+}
+
+.permissions-section h2 {
+	font-size: 16px;
+	font-weight: 600;
+	color: #1d2327;
+	margin-bottom: 15px;
+}
+
+.permission-list {
+	list-style: none;
+}
+
+.permission-item {
+	display: flex;
+	align-items: flex-start;
+	padding: 12px;
+	background: #f6f7f7;
+	border-radius: 6px;
+	margin-bottom: 8px;
+}
+
+.permission-icon {
+	flex-shrink: 0;
+	width: 20px;
+	height: 20px;
+	background: #2271b1;
+	color: #fff;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 12px;
+	margin-right: 12px;
+	margin-top: 2px;
+}
+
+.permission-text {
+	flex: 1;
+}
+
+.permission-title {
+	font-weight: 600;
+	color: #1d2327;
+	font-size: 14px;
+	margin-bottom: 3px;
+}
+
+.permission-description {
+	font-size: 13px;
+	color: #646970;
+}
+
+.security-notice {
+	background: #fcf9e8;
+	border-left: 4px solid #dba617;
+	padding: 15px;
+	margin-bottom: 25px;
+	border-radius: 4px;
+}
+
+.security-notice-title {
+	font-weight: 600;
+	color: #1d2327;
+	font-size: 14px;
+	margin-bottom: 5px;
+	display: flex;
+	align-items: center;
+}
+
+.security-notice-title::before {
+	content: "\26A0\FE0F";
+	margin-right: 8px;
+	font-size: 16px;
+}
+
+.security-notice p {
+	font-size: 13px;
+	color: #646970;
+	line-height: 1.5;
+}
+
+.action-buttons {
+	display: flex;
+	gap: 12px;
+	margin-top: 25px;
+}
+
+.btn {
+	flex: 1;
+	padding: 12px 24px;
+	border: none;
+	border-radius: 6px;
+	font-size: 14px;
+	font-weight: 600;
+	cursor: pointer;
+	transition: all 0.2s;
+	text-align: center;
+	text-decoration: none;
+	display: inline-block;
+}
+
+.btn-primary {
+	background: #2271b1;
+	color: #fff;
+}
+
+.btn-primary:hover {
+	background: #135e96;
+}
+
+.btn-primary:active {
+	background: #0a4b78;
+}
+
+.btn-secondary {
+	background: #fff;
+	color: #2c3338;
+	border: 1px solid #c3c4c7;
+}
+
+.btn-secondary:hover {
+	background: #f6f7f7;
+	border-color: #8c8f94;
+}
+
+.btn-secondary:active {
+	background: #e0e0e0;
+}
+
+.technical-details {
+	margin-top: 30px;
+	padding-top: 20px;
+	border-top: 1px solid #e0e0e0;
+}
+
+.technical-details summary {
+	cursor: pointer;
+	font-size: 13px;
+	color: #646970;
+	user-select: none;
+	display: flex;
+	align-items: center;
+}
+
+.technical-details summary::-webkit-details-marker {
+	display: none;
+}
+
+.technical-details summary::before {
+	content: "\25B8";
+	margin-right: 8px;
+	transition: transform 0.2s;
+}
+
+.technical-details[open] summary::before {
+	transform: rotate(90deg);
+}
+
+.technical-details-content {
+	margin-top: 15px;
+	padding: 15px;
+	background: #f6f7f7;
+	border-radius: 6px;
+	font-family: 'Courier New', monospace;
+	font-size: 12px;
+	color: #1d2327;
+}
+
+.technical-details-content dt {
+	font-weight: 600;
+	margin-top: 8px;
+	color: #646970;
+}
+
+.technical-details-content dd {
+	margin-left: 0;
+	margin-bottom: 8px;
+	word-break: break-all;
+}
+
+@media (max-width: 600px) {
+	.oauth-container {
+		margin: 20px auto;
+	}
+
+	.oauth-header {
+		padding: 20px;
+	}
+
+	.oauth-body {
+		padding: 20px;
+	}
+
+	.action-buttons {
+		flex-direction: column;
+	}
+}

@@ -1,0 +1,348 @@
+/**
+ * Abilities Bridge - Modern Chat Bubble Styles
+ *
+ * @package Abilities_Bridge
+ */
+
+/* Chat Messages Container */
+#abilities-bridge-chat-messages,
+.abilities-bridge-chat-messages {
+	display: flex;
+	flex-direction: column;
+	gap: 15px;
+	padding: 20px;
+	background: #f5f5f5;
+	min-height: 400px;
+	max-height: 600px;
+	overflow-y: auto;
+	border-radius: 8px;
+}
+
+/* Individual Chat Message */
+.chat-message {
+	display: flex;
+	flex-direction: column;
+	animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+	from {
+		opacity: 0;
+		transform: translateY(10px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+/* Message Role Label */
+.message-role {
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	margin-bottom: 5px;
+	opacity: 0.7;
+}
+
+/* Message Content Bubble */
+.message-content {
+	padding: 12px 16px;
+	border-radius: 18px;
+	max-width: 70%;
+	word-wrap: break-word;
+	white-space: pre-wrap;
+	line-height: 1.5;
+	font-size: 14px;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* User Messages (Right Side) */
+.user-message {
+	align-items: flex-end;
+}
+
+.user-message .message-role {
+	color: #2271b1;
+	text-align: right;
+	margin-right: 5px;
+}
+
+.user-message .message-content {
+	background: linear-gradient(135deg, #2271b1 0%, #135e96 100%);
+	color: white;
+	border-bottom-right-radius: 4px;
+}
+
+/* Assistant Messages (Left Side) */
+.assistant-message {
+	align-items: flex-start;
+}
+
+.assistant-message .message-role {
+	color: #50575e;
+	margin-left: 5px;
+}
+
+.assistant-message .message-content {
+	background: white;
+	color: #2c3338;
+	border: 1px solid #e0e0e0;
+	border-bottom-left-radius: 4px;
+}
+
+/* System Messages (Center) */
+.system-message {
+	align-items: center;
+}
+
+.system-message .message-role {
+	display: none;
+}
+
+.system-message .message-content {
+	background: #f0f6fc;
+	color: #50575e;
+	border: 1px solid #c3d9e8;
+	font-size: 13px;
+	font-style: italic;
+	text-align: center;
+	max-width: 80%;
+}
+
+/* Error Messages */
+.error-message {
+	align-items: center;
+}
+
+.error-message .message-role {
+	color: #d63638;
+}
+
+.error-message .message-content {
+	background: #fcf0f1;
+	color: #d63638;
+	border: 1px solid #f0c5c5;
+	max-width: 85%;
+}
+
+/* Message Content Formatting */
+.message-content p {
+	margin: 0 0 10px 0;
+}
+
+.message-content p:last-child {
+	margin-bottom: 0;
+}
+
+.message-content ul,
+.message-content ol {
+	margin: 10px 0;
+	padding-left: 20px;
+}
+
+.message-content li {
+	margin: 5px 0;
+}
+
+/* Code Blocks */
+.message-content code {
+	background: rgba(0, 0, 0, 0.08);
+	padding: 2px 6px;
+	border-radius: 4px;
+	font-family: 'Courier New', monospace;
+	font-size: 13px;
+}
+
+.user-message .message-content code {
+	background: rgba(255, 255, 255, 0.2);
+	color: white;
+}
+
+.message-content pre {
+	background: #1e1e1e;
+	color: #d4d4d4;
+	padding: 12px;
+	border-radius: 6px;
+	overflow-x: auto;
+	margin: 10px 0;
+}
+
+.message-content pre code {
+	background: transparent;
+	padding: 0;
+	color: inherit;
+	display: block;
+	white-space: pre;
+}
+
+/* Links in messages */
+.message-content a {
+	color: inherit;
+	text-decoration: underline;
+	text-decoration-style: dotted;
+}
+
+.message-content a:hover {
+	text-decoration-style: solid;
+}
+
+.user-message .message-content a {
+	color: white;
+	text-decoration-color: rgba(255, 255, 255, 0.5);
+}
+
+/* Timestamp (if needed) */
+.message-time {
+	font-size: 10px;
+	color: #8c8f94;
+	margin-top: 4px;
+	opacity: 0;
+	transition: opacity 0.2s;
+}
+
+.chat-message:hover .message-time {
+	opacity: 1;
+}
+
+/* Typing Indicator */
+.typing-indicator {
+	display: flex;
+	align-items: center;
+	padding: 12px 16px;
+}
+
+.typing-indicator span {
+	height: 8px;
+	width: 8px;
+	background: #8c8f94;
+	border-radius: 50%;
+	display: inline-block;
+	margin: 0 2px;
+	animation: typing 1.4s infinite;
+}
+
+.typing-indicator span:nth-child(2) {
+	animation-delay: 0.2s;
+}
+
+.typing-indicator span:nth-child(3) {
+	animation-delay: 0.4s;
+}
+
+@keyframes typing {
+	0%, 60%, 100% {
+		transform: translateY(0);
+	}
+	30% {
+		transform: translateY(-10px);
+	}
+}
+
+/* Scrollbar Styling */
+#abilities-bridge-chat-messages::-webkit-scrollbar,
+.abilities-bridge-chat-messages::-webkit-scrollbar {
+	width: 8px;
+}
+
+#abilities-bridge-chat-messages::-webkit-scrollbar-track,
+.abilities-bridge-chat-messages::-webkit-scrollbar-track {
+	background: #f1f1f1;
+	border-radius: 4px;
+}
+
+#abilities-bridge-chat-messages::-webkit-scrollbar-thumb,
+.abilities-bridge-chat-messages::-webkit-scrollbar-thumb {
+	background: #c1c1c1;
+	border-radius: 4px;
+}
+
+#abilities-bridge-chat-messages::-webkit-scrollbar-thumb:hover,
+.abilities-bridge-chat-messages::-webkit-scrollbar-thumb:hover {
+	background: #a8a8a8;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+	.message-content {
+		max-width: 85%;
+		font-size: 13px;
+	}
+
+	.user-message .message-content,
+	.assistant-message .message-content {
+		max-width: 90%;
+	}
+
+	#abilities-bridge-chat-messages,
+	.abilities-bridge-chat-messages {
+		padding: 15px;
+		gap: 12px;
+	}
+}
+
+/* Excluded (Archived) Messages */
+.excluded-message {
+	opacity: 0.6;
+}
+
+.excluded-message .message-content {
+	background: #f9f9f9 !important;
+	border: 1px dashed #d0d0d0 !important;
+	color: #787c82 !important;
+}
+
+.excluded-message.user-message .message-content {
+	background: linear-gradient(135deg, #8c8f94 0%, #6c6f74 100%) !important;
+	color: #f0f0f0 !important;
+}
+
+.excluded-label {
+	display: inline-block;
+	font-size: 10px;
+	font-weight: 600;
+	text-transform: uppercase;
+	padding: 2px 8px;
+	border-radius: 10px;
+	background: #f0f0f0;
+	color: #787c82;
+	margin-left: 8px;
+	vertical-align: middle;
+}
+
+.user-message .excluded-label {
+	background: rgba(255, 255, 255, 0.2);
+	color: rgba(255, 255, 255, 0.9);
+}
+
+/* Dark Mode Support (if WordPress admin is in dark mode) */
+@media (prefers-color-scheme: dark) {
+	#abilities-bridge-chat-messages,
+	.abilities-bridge-chat-messages {
+		background: #1e1e1e;
+	}
+
+	.assistant-message .message-content {
+		background: #2c2c2c;
+		color: #e0e0e0;
+		border-color: #404040;
+	}
+
+	.system-message .message-content {
+		background: #252525;
+		border-color: #404040;
+		color: #a0a0a0;
+	}
+
+	.excluded-message .message-content {
+		background: #2a2a2a !important;
+		border-color: #404040 !important;
+		color: #787c82 !important;
+	}
+
+	.excluded-label {
+		background: #3a3a3a;
+		color: #a0a0a0;
+	}
+}

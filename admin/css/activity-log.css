@@ -1,0 +1,409 @@
+/**
+ * Activity Log Page Styles
+ *
+ * @package Abilities_Bridge
+ */
+
+/* Tab Navigation */
+.nav-tab-wrapper {
+	margin-bottom: 20px;
+}
+
+/* Tab Content */
+.tab-content {
+	display: none;
+}
+
+.tab-content.active {
+	display: block;
+}
+
+/* Filter Form */
+.activity-log-filters {
+	background: #fff;
+	border: 1px solid #ccd0d4;
+	padding: 15px;
+	margin-bottom: 20px;
+	box-shadow: 0 1px 1px rgba(0,0,0,0.04);
+}
+
+.activity-log-filters h3 {
+	margin-top: 0;
+	margin-bottom: 15px;
+	font-size: 14px;
+	font-weight: 600;
+}
+
+.filter-row {
+	display: flex;
+	gap: 15px;
+	align-items: flex-end;
+	flex-wrap: wrap;
+	margin-bottom: 10px;
+}
+
+.filter-field {
+	flex: 1;
+	min-width: 200px;
+}
+
+.filter-field label {
+	display: block;
+	margin-bottom: 5px;
+	font-weight: 600;
+	font-size: 13px;
+}
+
+.filter-field select,
+.filter-field input[type="text"] {
+	width: 100%;
+	max-width: 300px;
+}
+
+.filter-actions {
+	display: flex;
+	gap: 10px;
+	align-items: center;
+}
+
+/* Activity Log Table */
+.activity-log-table {
+	width: 100%;
+	border-collapse: collapse;
+	background: #fff;
+	box-shadow: 0 1px 1px rgba(0,0,0,0.04);
+}
+
+.activity-log-table thead th {
+	background: #f6f7f7;
+	border-bottom: 1px solid #ccd0d4;
+	padding: 10px;
+	text-align: left;
+	font-weight: 600;
+	font-size: 13px;
+}
+
+.activity-log-table tbody tr {
+	border-bottom: 1px solid #e5e5e5;
+}
+
+.activity-log-table tbody tr:hover {
+	background: #f9f9f9;
+}
+
+.activity-log-table tbody td {
+	padding: 10px;
+	font-size: 13px;
+}
+
+/* Status Badges */
+.status-badge {
+	display: inline-block;
+	padding: 3px 8px;
+	border-radius: 3px;
+	font-size: 12px;
+	font-weight: 600;
+	text-transform: uppercase;
+}
+
+.status-badge.success {
+	background: #d4edda;
+	color: #155724;
+	border: 1px solid #c3e6cb;
+}
+
+.status-badge.error {
+	background: #f8d7da;
+	color: #721c24;
+	border: 1px solid #f5c6cb;
+}
+
+.status-badge.in-progress {
+	background: #fff3cd;
+	color: #856404;
+	border: 1px solid #ffeeba;
+}
+
+/* Detail Toggle Button */
+.toggle-details {
+	background: none;
+	border: none;
+	color: #2271b1;
+	cursor: pointer;
+	padding: 0;
+	font-size: 13px;
+	text-decoration: underline;
+}
+
+.toggle-details:hover {
+	color: #135e96;
+}
+
+/* Log Detail Row */
+.log-detail-row td {
+	background: #f6f7f7;
+	padding: 15px !important;
+	border-top: 1px solid #ccd0d4;
+}
+
+.log-details {
+	font-size: 13px;
+}
+
+.log-detail-section {
+	margin-bottom: 15px;
+}
+
+.log-detail-section:last-child {
+	margin-bottom: 0;
+}
+
+.log-detail-section strong {
+	display: block;
+	margin-bottom: 5px;
+	font-weight: 600;
+}
+
+.log-details pre {
+	background: #fff;
+	border: 1px solid #ccd0d4;
+	padding: 10px;
+	margin: 0;
+	overflow-x: auto;
+	font-size: 12px;
+	line-height: 1.5;
+	white-space: pre-wrap;
+	word-wrap: break-word;
+	word-break: break-word;
+	overflow-wrap: break-word;
+}
+
+.log-details .error-message {
+	background: #fef0f0;
+	border: 1px solid #f5c6cb;
+	color: #721c24;
+	padding: 10px;
+	margin: 0;
+}
+
+/* Pagination */
+.activity-log-pagination {
+	margin-top: 15px;
+	padding: 10px;
+	background: #fff;
+	border: 1px solid #ccd0d4;
+	text-align: center;
+}
+
+.activity-log-pagination span,
+.activity-log-pagination a {
+	display: inline-block;
+	padding: 5px 10px;
+	margin: 0 2px;
+	border: 1px solid #ccd0d4;
+	background: #fff;
+	text-decoration: none;
+	color: #2271b1;
+}
+
+.activity-log-pagination span.current {
+	background: #2271b1;
+	color: #fff;
+	border-color: #2271b1;
+}
+
+.activity-log-pagination a:hover {
+	background: #f6f7f7;
+}
+
+.activity-log-pagination .disabled {
+	color: #a7aaad;
+	cursor: default;
+}
+
+.activity-log-pagination .disabled:hover {
+	background: #fff;
+}
+
+/* Deleted Conversations Table */
+.deleted-conversations-table {
+	width: 100%;
+	border-collapse: collapse;
+	background: #fff;
+	box-shadow: 0 1px 1px rgba(0,0,0,0.04);
+}
+
+.deleted-conversations-table thead th {
+	background: #f6f7f7;
+	border-bottom: 1px solid #ccd0d4;
+	padding: 10px;
+	text-align: left;
+	font-weight: 600;
+	font-size: 13px;
+}
+
+.deleted-conversations-table tbody tr {
+	border-bottom: 1px solid #e5e5e5;
+}
+
+.deleted-conversations-table tbody tr:hover {
+	background: #f9f9f9;
+}
+
+.deleted-conversations-table tbody td {
+	padding: 10px;
+	font-size: 13px;
+}
+
+/* Days Remaining Badge */
+.days-remaining {
+	display: inline-block;
+	padding: 3px 8px;
+	border-radius: 3px;
+	font-size: 12px;
+	font-weight: 600;
+}
+
+.days-remaining.warning {
+	background: #fff3cd;
+	color: #856404;
+	border: 1px solid #ffeeba;
+}
+
+.days-remaining.danger {
+	background: #f8d7da;
+	color: #721c24;
+	border: 1px solid #f5c6cb;
+}
+
+.days-remaining.safe {
+	background: #d4edda;
+	color: #155724;
+	border: 1px solid #c3e6cb;
+}
+
+/* Action Buttons in Tables */
+.deleted-conversations-table .button-secondary {
+	margin-right: 5px;
+}
+
+.deleted-conversations-table .button-link-delete {
+	color: #b32d2e;
+}
+
+.deleted-conversations-table .button-link-delete:hover {
+	color: #8a2424;
+}
+
+/* Empty State */
+.activity-log-table tbody tr td[colspan],
+.deleted-conversations-table tbody tr td[colspan] {
+	text-align: center;
+	padding: 30px !important;
+	color: #646970;
+	font-style: italic;
+}
+
+/* Export Button */
+#export-csv-btn {
+	margin-left: 10px;
+}
+
+/* Source Badges */
+.source-badge {
+	display: inline-block;
+	padding: 3px 8px;
+	border-radius: 3px;
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+}
+
+.source-badge.source-admin {
+	background: #e7f3ff;
+	color: #0c5087;
+	border: 1px solid #b8dcf5;
+}
+
+.source-badge.source-mcp {
+	background: #f0e7ff;
+	color: #5c3d99;
+	border: 1px solid #d4c5ec;
+}
+
+/* Responsive Design */
+@media screen and (max-width: 782px) {
+	.filter-row {
+		flex-direction: column;
+		gap: 10px;
+	}
+
+	.filter-field {
+		width: 100%;
+		min-width: 100%;
+	}
+
+	.filter-field select,
+	.filter-field input[type="text"] {
+		max-width: 100%;
+	}
+
+	.filter-actions {
+		width: 100%;
+		justify-content: flex-start;
+	}
+
+	.activity-log-table,
+	.deleted-conversations-table {
+		font-size: 12px;
+	}
+
+	.activity-log-table thead th,
+	.deleted-conversations-table thead th,
+	.activity-log-table tbody td,
+	.deleted-conversations-table tbody td {
+		padding: 8px;
+	}
+}
+
+/* Loading State */
+.activity-log-table tbody tr.loading td,
+.deleted-conversations-table tbody tr.loading td {
+	text-align: center;
+	padding: 30px !important;
+	color: #646970;
+}
+
+/* Notice Animations */
+.notice {
+	animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+	from {
+		opacity: 0;
+		transform: translateY(-10px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+/* Button Disabled State */
+button:disabled,
+.button:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+/* Fade Out Animation for Removed Rows */
+@keyframes fadeOut {
+	from {
+		opacity: 1;
+	}
+	to {
+		opacity: 0;
+	}
+}

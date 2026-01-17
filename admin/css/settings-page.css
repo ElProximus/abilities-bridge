@@ -1,0 +1,159 @@
+/**
+ * Settings Page and Welcome Wizard Styles
+ *
+ * @package Abilities_Bridge
+ */
+
+/* Welcome Wizard Styles */
+.abilities-bridge-welcome-wizard {
+	max-width: 900px;
+	margin-top: 40px;
+}
+
+.welcome-wizard-card {
+	background: #fff;
+	border: 1px solid #ccd0d4;
+	box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+	padding: 40px;
+	margin-bottom: 20px;
+}
+
+.welcome-wizard-card h1 {
+	margin-top: 0;
+	font-size: 28px;
+	color: #1d2327;
+}
+
+.welcome-wizard-card h2 {
+	font-size: 22px;
+	margin-top: 30px;
+	margin-bottom: 15px;
+	color: #1d2327;
+}
+
+.welcome-wizard-card h3 {
+	font-size: 18px;
+	margin-top: 20px;
+	margin-bottom: 10px;
+	color: #2c3338;
+}
+
+.wizard-section {
+	background: #f6f7f7;
+	border-left: 4px solid #2271b1;
+	padding: 20px;
+	margin: 20px 0;
+}
+
+.wizard-section h3 {
+	margin-top: 0;
+}
+
+.wizard-section ul {
+	margin: 10px 0 10px 20px;
+	list-style: disc;
+}
+
+.wizard-section li {
+	margin: 8px 0;
+}
+
+.changelog-section {
+	background: #fff3cd;
+	border-left: 4px solid #ffc107;
+	padding: 20px;
+	margin: 20px 0;
+}
+
+.changelog-section h3 {
+	margin-top: 0;
+	color: #856404;
+}
+
+.changelog-section h4 {
+	font-size: 14px;
+	font-weight: 600;
+	margin-top: 15px;
+	margin-bottom: 8px;
+	text-transform: uppercase;
+	color: #856404;
+}
+
+.changelog-section ul {
+	margin: 5px 0 15px 20px;
+	list-style: disc;
+}
+
+.consent-checkboxes {
+	background: #f0f0f1;
+	border: 2px solid #2271b1;
+	padding: 25px;
+	margin: 30px 0;
+}
+
+.consent-checkboxes h3 {
+	margin-top: 0;
+	font-size: 18px;
+}
+
+.consent-checkbox-item {
+	margin: 20px 0;
+	display: flex;
+	align-items: flex-start;
+}
+
+.consent-checkbox-item input[type="checkbox"] {
+	margin: 4px 10px 0 0;
+	flex-shrink: 0;
+}
+
+.consent-checkbox-item label {
+	font-size: 14px;
+	line-height: 1.6;
+	cursor: pointer;
+}
+
+.wizard-actions {
+	margin-top: 30px;
+	padding-top: 20px;
+	border-top: 1px solid #dcdcde;
+	text-align: center;
+}
+
+.wizard-actions .button {
+	font-size: 16px;
+	padding: 10px 30px;
+	height: auto;
+}
+
+.wizard-actions .button-primary {
+	margin-left: 10px;
+}
+
+.warning-icon {
+	font-size: 24px;
+	vertical-align: middle;
+}
+
+/* System Prompt Textarea */
+.abilities-bridge-system-prompt {
+	width: 100%;
+	min-height: 400px;
+	font-family: monospace;
+	font-size: 13px;
+	line-height: 1.5;
+	padding: 12px;
+	border: 1px solid #8c8f94;
+	border-radius: 4px;
+	resize: vertical;
+}
+
+.abilities-bridge-system-prompt:focus {
+	border-color: #2271b1;
+	box-shadow: 0 0 0 1px #2271b1;
+	outline: none;
+}
+
+#abilities-bridge-restore-default-prompt {
+	margin-top: 10px;
+}

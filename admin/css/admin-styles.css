@@ -1,0 +1,801 @@
+/**
+ * Abilities Bridge - Admin Styles
+ *
+ * @package Abilities_Bridge
+ */
+
+/* Main Container */
+.abilities-bridge-wrap {
+	margin: 20px 20px 0 0;
+	overflow-x: hidden;
+	max-width: 100%;
+}
+
+.abilities-bridge-container {
+	display: grid;
+	grid-template-columns: 350px 1fr;
+	gap: 20px;
+	margin-top: 20px;
+	overflow-x: hidden;
+	max-width: 100%;
+}
+
+/* Dashboard Column */
+.abilities-bridge-dashboard {
+	display: flex;
+	flex-direction: column;
+	gap: 15px;
+}
+
+.abilities-bridge-dashboard .card {
+	margin: 0;
+	padding: 15px;
+}
+
+.abilities-bridge-dashboard h2 {
+	margin-top: 0;
+	font-size: 16px;
+	border-bottom: 1px solid #ddd;
+	padding-bottom: 10px;
+}
+
+/* Conversation Controls */
+.abilities-bridge-conversation-controls {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.abilities-bridge-resume-conversation {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+}
+
+.abilities-bridge-resume-conversation label {
+	font-weight: 600;
+	font-size: 13px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+/* IMPROVED: Refresh Button Styling */
+#abilities-bridge-refresh-conversations {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px 8px;
+	font-size: 12px;
+	line-height: 1;
+	border: 1px solid #c3c4c7;
+	border-radius: 3px;
+	background: #f6f7f7;
+	color: #2c3338;
+	cursor: pointer;
+	transition: all 0.2s ease;
+	text-decoration: none;
+}
+
+#abilities-bridge-refresh-conversations:hover {
+	background: #fff;
+	border-color: #2271b1;
+	color: #2271b1;
+}
+
+#abilities-bridge-refresh-conversations:active {
+	transform: scale(0.95);
+}
+
+#abilities-bridge-refresh-conversations:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+/* Spinning animation for refresh icon when clicked */
+#abilities-bridge-refresh-conversations.spinning {
+	animation: refreshSpin 0.6s ease-in-out;
+}
+
+@keyframes refreshSpin {
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+/* IMPROVED: Conversation Select Dropdown */
+#abilities-bridge-conversation-select {
+	width: 100%;
+	padding: 8px 30px 8px 8px;
+	font-size: 13px;
+	line-height: 1.6;
+	max-height: 400px;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	overflow: hidden;
+}
+
+#abilities-bridge-conversation-select option {
+	padding: 8px;
+	line-height: 1.8;
+}
+
+#abilities-bridge-conversation-select option:first-child {
+	font-style: italic;
+	color: #646970;
+}
+
+#abilities-bridge-conversation-select option[selected] {
+	font-weight: bold;
+	background-color: #f0f6ff;
+}
+
+/* Model Selector */
+.abilities-bridge-model-selector-card {
+	background: linear-gradient(135deg, #f6f7f9 0%, #ffffff 100%);
+	border-left: 4px solid #2271b1;
+}
+
+.abilities-bridge-model-selector {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.abilities-bridge-model-selector label {
+	font-weight: 600;
+	font-size: 13px;
+	color: #2c3338;
+}
+
+#abilities-bridge-model-select {
+	width: 100%;
+	padding: 8px;
+	padding-right: 32px;
+	font-size: 13px;
+	line-height: 1.6;
+	border: 1px solid #8c8f94;
+	border-radius: 4px;
+	background: white;
+	-webkit-appearance: none;
+	-moz-appearance: none;
+	appearance: none;
+	background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+	background-repeat: no-repeat;
+	background-position: right 8px center;
+	background-size: 16px;
+	cursor: pointer;
+	transition: border-color 0.2s ease;
+}
+
+#abilities-bridge-model-select:hover {
+	border-color: #2271b1;
+}
+
+#abilities-bridge-model-select:focus {
+	border-color: #2271b1;
+	box-shadow: 0 0 0 1px #2271b1;
+	outline: none;
+}
+
+.abilities-bridge-model-info {
+	padding: 8px;
+	background: #f0f6fc;
+	border-radius: 4px;
+	font-size: 12px;
+	color: #3c434a;
+}
+
+#abilities-bridge-model-description {
+	font-weight: 500;
+}
+
+/* Conversation Info */
+#abilities-bridge-conversation-info {
+	background: #f0f6ff;
+	border: 1px solid #2271b1;
+	border-radius: 4px;
+	padding: 10px;
+	font-size: 13px;
+}
+
+#abilities-bridge-conversation-info strong {
+	color: #2271b1;
+}
+
+/* Usage Info */
+#abilities-bridge-usage-info {
+	margin: 15px 0;
+}
+
+#abilities-bridge-usage-info p {
+	margin: 8px 0;
+	font-size: 13px;
+}
+
+/* Chat Column */
+.abilities-bridge-chat {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+	min-height: 600px;
+	overflow-x: hidden;
+	max-width: 100%;
+}
+
+.abilities-bridge-chat-content {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
+	overflow: hidden;
+}
+
+.abilities-bridge-chat-header {
+	flex-shrink: 0;
+	padding: 15px 20px;
+	border-bottom: 1px solid #c3c4c7;
+	background: #f6f7f7;
+}
+
+.abilities-bridge-chat-header h2 {
+	margin: 0 0 5px 0;
+	font-size: 18px;
+}
+
+.abilities-bridge-chat-header .description {
+	margin: 0;
+	color: #646970;
+	font-size: 13px;
+}
+
+/* Chat Messages */
+.abilities-bridge-chat-messages {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	overflow-x: hidden;
+	padding: 20px;
+	background: #f9f9f9;
+	max-width: 100%;
+}
+
+.abilities-bridge-message {
+	margin-bottom: 20px;
+	animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+	from {
+		opacity: 0;
+		transform: translateY(10px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+.abilities-bridge-message-content {
+	padding: 15px;
+	border-radius: 8px;
+	max-width: 85%;
+	word-wrap: break-word;
+	overflow-wrap: break-word;
+	word-break: break-word;
+	hyphens: auto;
+	overflow-x: hidden;
+}
+
+.abilities-bridge-message-user .abilities-bridge-message-content {
+	background: #2271b1;
+	color: #fff;
+	margin-left: auto;
+}
+
+.abilities-bridge-message-assistant .abilities-bridge-message-content {
+	background: #fff;
+	border: 1px solid #c3c4c7;
+}
+
+.abilities-bridge-message-error .abilities-bridge-message-content {
+	background: #fcf0f1;
+	border: 1px solid #d63638;
+	color: #3c434a;
+	padding: 12px;
+	border-radius: 4px;
+}
+
+.abilities-bridge-message-info .abilities-bridge-message-content {
+	background: #f0f6ff;
+	border: 1px solid #2271b1;
+	color: #3c434a;
+	padding: 12px;
+	border-radius: 4px;
+	font-style: italic;
+}
+
+.abilities-bridge-message-warning .abilities-bridge-message-content {
+	background: #fcf9e8;
+	border: 1px solid #dba617;
+	color: #3c434a;
+	padding: 12px;
+	border-radius: 4px;
+}
+
+.abilities-bridge-message-content p {
+	margin: 0 0 10px 0;
+}
+
+.abilities-bridge-message-content p:last-child {
+	margin-bottom: 0;
+}
+
+.abilities-bridge-message-content ul,
+.abilities-bridge-message-content ol {
+	margin: 10px 0;
+	padding-left: 25px;
+}
+
+.abilities-bridge-message-content li {
+	margin: 5px 0;
+}
+
+.abilities-bridge-message-content code {
+	background: rgba(0, 0, 0, 0.05);
+	padding: 2px 6px;
+	border-radius: 3px;
+	font-family: Consolas, Monaco, monospace;
+	font-size: 12px;
+}
+
+.abilities-bridge-message-user .abilities-bridge-message-content code {
+	background: rgba(255, 255, 255, 0.2);
+}
+
+.abilities-bridge-message-content pre {
+	background: #1e1e1e;
+	color: #d4d4d4;
+	padding: 15px;
+	border-radius: 5px;
+	overflow-x: auto;
+	margin: 10px 0;
+	max-width: 100%;
+	box-sizing: border-box;
+}
+
+.abilities-bridge-message-content pre code {
+	background: transparent;
+	padding: 0;
+	color: inherit;
+}
+
+.abilities-bridge-welcome-message {
+	margin-bottom: 30px;
+}
+
+/* Loading Indicator */
+.abilities-bridge-chat-loading {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 15px 20px;
+	background: #f0f0f1;
+	border-top: 1px solid #c3c4c7;
+	color: #646970;
+	font-size: 13px;
+}
+
+.abilities-bridge-loading-spinner {
+	width: 16px;
+	height: 16px;
+	border: 2px solid #c3c4c7;
+	border-top-color: #2271b1;
+	border-radius: 50%;
+	animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+/* Chat Input */
+.abilities-bridge-chat-input-container {
+	flex-shrink: 0;
+	position: relative;
+	padding: 20px;
+	border-top: 1px solid #c3c4c7;
+	background: #fff;
+}
+
+#abilities-bridge-chat-input {
+	width: 100%;
+	padding: 10px;
+	border: 1px solid #8c8f94;
+	border-radius: 4px;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+	font-size: 14px;
+	resize: vertical;
+	min-height: 60px;
+}
+
+#abilities-bridge-chat-input:focus {
+	border-color: #2271b1;
+	outline: none;
+	box-shadow: 0 0 0 1px #2271b1;
+}
+
+.abilities-bridge-chat-actions {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-top: 10px;
+}
+
+.abilities-bridge-chat-hint {
+	font-size: 12px;
+	color: #646970;
+}
+
+#abilities-bridge-send-button:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+#abilities-bridge-stop-button {
+	background: #dc3545;
+	border-color: #dc3545;
+	color: white;
+	font-weight: 600;
+}
+
+#abilities-bridge-stop-button:hover {
+	background: #c82333;
+	border-color: #bd2130;
+	color: white;
+}
+
+#abilities-bridge-stop-button:active {
+	background: #bd2130;
+	border-color: #b21f2d;
+}
+
+/* Responsive Design - Tablet Breakpoint at 1024px */
+@media screen and (max-width: 1024px) {
+	.abilities-bridge-container {
+		grid-template-columns: 300px 1fr;
+	}
+}
+
+/* Responsive Design - Mobile Breakpoint at 600px */
+@media screen and (max-width: 600px) {
+	.abilities-bridge-container {
+		grid-template-columns: 1fr;
+	}
+
+	.abilities-bridge-dashboard {
+		order: 2;
+	}
+
+	.abilities-bridge-chat {
+		order: 1;
+		height: 500px;
+		min-height: 400px;
+	}
+
+	.abilities-bridge-message-content {
+		max-width: 95%;
+	}
+
+	.abilities-bridge-chat-actions {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 10px;
+	}
+
+	.abilities-bridge-chat-hint {
+		align-self: flex-end;
+	}
+}
+
+/* Utilities */
+.abilities-bridge-hidden {
+	display: none !important;
+}
+
+.abilities-bridge-error {
+	color: #d63638;
+}
+
+/* System Info Table */
+.abilities-bridge-dashboard table.widefat td {
+	padding: 8px 10px;
+	font-size: 13px;
+}
+
+.abilities-bridge-dashboard table.widefat td:first-child {
+	width: 50%;
+}
+
+/* Scrollbar Styling */
+.abilities-bridge-chat-messages::-webkit-scrollbar {
+	width: 10px;
+}
+
+.abilities-bridge-chat-messages::-webkit-scrollbar-track {
+	background: #f1f1f1;
+}
+
+.abilities-bridge-chat-messages::-webkit-scrollbar-thumb {
+	background: #c1c1c1;
+	border-radius: 5px;
+}
+
+.abilities-bridge-chat-messages::-webkit-scrollbar-thumb:hover {
+	background: #a8a8a8;
+}
+
+/* Plan Mode Styles */
+.abilities-bridge-plan-mode-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	margin-right: 15px;
+	padding: 5px 10px;
+	background: #f0f0f1;
+	border-radius: 4px;
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.abilities-bridge-plan-mode-toggle:hover {
+	background: #e0e0e1;
+}
+
+.abilities-bridge-plan-mode-toggle input[type="checkbox"] {
+	margin: 0;
+	cursor: pointer;
+}
+
+.abilities-bridge-plan-mode-toggle input:checked + span {
+	color: #d63638;
+	font-weight: 600;
+}
+
+/* Visual indicator when Plan Mode is active */
+.abilities-bridge-chat-content.plan-mode-active {
+	border: 2px solid #dba617;
+	border-radius: 4px;
+	position: relative;
+}
+
+.abilities-bridge-chat-content.plan-mode-active::before {
+	content: "⚠️ Plan Mode Active - Write operations disabled";
+	display: block;
+	background: #fcf0e1;
+	color: #996800;
+	padding: 8px;
+	text-align: center;
+	font-weight: 500;
+	margin: -2px -2px 10px -2px;
+	border-radius: 4px 4px 0 0;
+}
+
+/* Token Meter Styles */
+.abilities-bridge-token-meter {
+	flex-shrink: 0;
+	margin: 15px 0;
+	padding: 12px;
+	background: #f6f7f7;
+	border-radius: 6px;
+	border: 1px solid #e0e0e1;
+}
+
+.token-meter-bar {
+	height: 24px;
+	background: #e5e7eb;
+	border-radius: 12px;
+	overflow: hidden;
+	margin-bottom: 8px;
+	position: relative;
+	box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.token-meter-fill {
+	height: 100%;
+	background: #10b981;
+	transition: width 0.5s ease, background-color 0.3s ease;
+	border-radius: 12px;
+	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+	position: relative;
+	overflow: hidden;
+}
+
+/* Animated shine effect on token meter */
+.token-meter-fill::after {
+	content: '';
+	position: absolute;
+	top: 0;
+	left: -100%;
+	width: 100%;
+	height: 100%;
+	background: linear-gradient(
+		90deg,
+		transparent,
+		rgba(255, 255, 255, 0.3),
+		transparent
+	);
+	animation: shine 3s infinite;
+}
+
+@keyframes shine {
+	0% {
+		left: -100%;
+	}
+	100% {
+		left: 100%;
+	}
+}
+
+.token-meter-info {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	font-size: 12px;
+	color: #6b7280;
+}
+
+.token-meter-info span {
+	padding: 2px 6px;
+	background: white;
+	border-radius: 3px;
+	border: 1px solid #e0e0e1;
+}
+
+.token-count {
+	font-weight: 600;
+	color: #2c3338;
+}
+
+.token-model {
+	color: #2271b1;
+}
+
+.token-limit-info {
+	color: #10b981;
+	font-weight: 500;
+}
+
+/* Token meter high usage pulse */
+.token-meter-fill[data-high-usage="true"] {
+	animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+	0%, 100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.8;
+	}
+}
+
+/* Tooltip for token breakdown */
+.token-meter-bar[title]:hover::after {
+	content: attr(title);
+	position: absolute;
+	bottom: 30px;
+	left: 50%;
+	transform: translateX(-50%);
+	background: #1f2937;
+	color: white;
+	padding: 10px 14px;
+	border-radius: 6px;
+	white-space: pre-line;
+	font-size: 11px;
+	z-index: 1000;
+	box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+	pointer-events: none;
+}
+
+.token-meter-bar[title]:hover::before {
+	content: '';
+	position: absolute;
+	bottom: 25px;
+	left: 50%;
+	transform: translateX(-50%);
+	border-left: 5px solid transparent;
+	border-right: 5px solid transparent;
+	border-top: 5px solid #1f2937;
+	z-index: 1001;
+}
+
+/* Settings Page Tabs */
+.abilities-bridge-settings-tabs {
+	margin: 20px 0;
+	border-bottom: 1px solid #ccd0d4;
+}
+
+.abilities-bridge-tab-content {
+	margin-top: 20px;
+}
+
+.abilities-bridge-tab-content .card {
+	margin-bottom: 20px;
+}
+
+/* Summary Continuation Feature */
+.summary-warning {
+	animation: fadeIn 0.3s ease;
+	margin: 15px 0;
+}
+
+.summary-warning .abilities-bridge-message-content {
+	max-width: 100%;
+}
+
+.summary-warning .abilities-bridge-message-content button {
+	margin-right: 10px;
+	margin-top: 10px;
+}
+
+.summary-continuation-actions {
+	margin: 15px 0;
+	padding: 15px;
+	background: #f0f6fc;
+	border-radius: 6px;
+	border-left: 4px solid #0969da;
+	animation: fadeIn 0.3s ease;
+}
+
+.summary-continuation-actions p {
+	margin: 0 0 10px 0;
+}
+
+.summary-continuation-actions .button {
+	margin-top: 5px;
+}
+
+.conversation-continuation-marker {
+	display: flex;
+	align-items: center;
+	margin: 25px 0;
+	padding: 15px 0;
+}
+
+.continuation-line {
+	flex: 1;
+	height: 2px;
+	background: linear-gradient(90deg, transparent, #d0d7de, transparent);
+}
+
+.continuation-text {
+	padding: 0 15px;
+	font-size: 13px;
+	font-weight: 600;
+	color: #57606a;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	white-space: nowrap;
+}
+
+@keyframes fadeIn {
+	from {
+		opacity: 0;
+		transform: translateY(-10px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
