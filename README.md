@@ -1,12 +1,12 @@
 # Abilities Bridge
 
-MCP server for WordPress with admin interface. Connect Claude AI to execute WordPress Abilities with configurable permissions, activity monitoring, memory storage, and OAuth 2.0 authentication.
+MCP server for WordPress with admin interface. Connect Claude AI or OpenAI to execute WordPress Abilities with configurable permissions, activity monitoring, memory storage, and OAuth 2.0 authentication.
 
 ## Overview
 
-Abilities Bridge provides two interfaces for connecting Claude AI to your WordPress site:
+Abilities Bridge provides two interfaces for connecting AI to your WordPress site:
 
-1. **Admin Chat Interface** - Built-in chatbot for direct interaction with Claude
+1. **Admin Chat Interface** - Built-in chatbot for direct interaction with Claude or OpenAI
 2. **MCP Integration** - Connect via Model Context Protocol to Claude Desktop and other MCP-compatible applications
 
 ## Key Features
@@ -16,7 +16,7 @@ Abilities Bridge provides two interfaces for connecting Claude AI to your WordPr
 - **Memory Tool** - AI can maintain persistent notes in database-backed storage
 - **Abilities Execution** - Run authorized WordPress Abilities with permission controls
 - **Conversation Management** - Save, resume, and manage multiple conversations
-- **Claude 4.5 Models** - Choose between Opus 4.5 (most intelligent), Sonnet 4.5 (balanced), or Haiku 4.5 (fastest)
+- **AI Models** - Claude Opus 4.6, Sonnet 4.5, Haiku 4.5 (Anthropic) and GPT-5.2, GPT-5.1, GPT-5 (OpenAI)
 - **OAuth 2.0** - Secure authentication for MCP connections
 
 ## Memory
@@ -42,7 +42,7 @@ Requires Abilities API or WordPress 6.9+.
 **WordPress Admin Interface:**
 - WordPress 6.2 or higher
 - PHP 7.4 or higher
-- Anthropic API key (from [console.anthropic.com](https://console.anthropic.com)) or compatible API service
+- Anthropic API key (from [console.anthropic.com](https://console.anthropic.com)) or OpenAI API key (from [platform.openai.com](https://platform.openai.com)) or compatible API service
 
 **MCP Integration (Optional):**
 - HTTPS enabled on WordPress site (required for OAuth authentication)
@@ -56,8 +56,8 @@ Requires Abilities API or WordPress 6.9+.
 1. Install from the WordPress plugin directory
 2. Activate the plugin
 3. Complete the welcome wizard to grant consent
-4. Go to **Abilities Bridge > Settings** and enter your Anthropic API key
-5. Start chatting with Claude
+4. Go to **Abilities Bridge > Settings** and enter your Anthropic or OpenAI API key
+5. Start chatting
 
 ### From GitHub Release (Manual Installation)
 
@@ -196,7 +196,7 @@ Please ensure your code follows WordPress Coding Standards.
 
 ## Privacy & Data Handling
 
-This plugin sends data to Anthropic's Claude API (https://api.anthropic.com) when you interact with the AI:
+This plugin sends data to your selected AI provider — Anthropic's Claude API (https://api.anthropic.com) or OpenAI's API (https://api.openai.com) — when you interact with the AI:
 
 - Chat messages and conversation history
 - Memory contents
@@ -204,7 +204,7 @@ This plugin sends data to Anthropic's Claude API (https://api.anthropic.com) whe
 
 Data is only sent when you actively use the chat interface or MCP tools. No background data collection occurs.
 
-Please review [Anthropic's privacy policy](https://www.anthropic.com/legal/privacy).
+Please review [Anthropic's privacy policy](https://www.anthropic.com/legal/privacy) and/or [OpenAI's privacy policy](https://openai.com/policies/privacy-policy).
 
 ## Support
 
@@ -230,7 +230,8 @@ GNU General Public License for more details.
 ## Credits
 
 Built with:
-- [Anthropic Claude 4.5 API](https://www.anthropic.com/claude)
+- [Anthropic Claude API](https://www.anthropic.com/claude)
+- [OpenAI API](https://platform.openai.com)
 - [WordPress](https://wordpress.org)
 - [Model Context Protocol](https://modelcontextprotocol.io)
 

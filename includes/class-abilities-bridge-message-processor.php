@@ -51,22 +51,35 @@ class Abilities_Bridge_Message_Processor {
 		// Add user message to conversation.
 		$conversation->add_user_message( $user_message );
 
-		// Get model from conversation or use user's selected model.
+		$provider        = Abilities_Bridge_AI_Provider::get_current_provider();
 		$model           = null;
 		$conversation_id = $conversation->get_id();
+
 		if ( $conversation_id ) {
 			$conversation_data = Abilities_Bridge_Database::get_conversation( $conversation_id );
-			if ( $conversation_data && isset( $conversation_data->model ) ) {
-				$model = $conversation_data->model;
+			if ( $conversation_data ) {
+				if ( ! empty( $conversation_data->provider ) ) {
+					$provider = $conversation_data->provider;
+				} elseif ( ! empty( $conversation_data->model ) ) {
+					$provider = Abilities_Bridge_AI_Provider::infer_provider_from_model( $conversation_data->model, $provider );
+				}
+
+				if ( isset( $conversation_data->model ) ) {
+					$available_models = Abilities_Bridge_AI_Provider::get_available_models( $provider );
+					if ( isset( $available_models[ $conversation_data->model ] ) ) {
+						$model = $conversation_data->model;
+					}
+				}
 			}
 		}
+
 		if ( empty( $model ) ) {
-			$model = Abilities_Bridge_Claude_API::get_selected_model();
+			$model = Abilities_Bridge_AI_Provider::get_selected_model( $provider );
 		}
 
-		// Initialize Claude API.
-		$claude = new Abilities_Bridge_Claude_API();
-		$tools  = Abilities_Bridge_Claude_API::get_tool_definitions();
+		// Initialize AI provider client.
+		$ai_client = Abilities_Bridge_AI_Provider::create_client( $provider );
+		$tools     = Abilities_Bridge_AI_Provider::get_tool_definitions();
 
 		// Tool use loop - continue until Claude stops requesting tools.
 		$max_iterations    = 10; // Reduced from 20 to prevent excessive loops.
@@ -96,7 +109,7 @@ class Abilities_Bridge_Message_Processor {
 					sleep( $retry_delay * pow( 2, $retry - 1 ) );
 				}
 
-				$response = $claude->send_message( $conversation->get_messages_for_api(), $tools, 4096, $model );
+				$response = $ai_client->send_message( $conversation->get_messages_for_api(), $tools, 4096, $model );
 
 				if ( ! is_wp_error( $response ) ) {
 					break; // Success - continue processing.
@@ -119,8 +132,9 @@ class Abilities_Bridge_Message_Processor {
 					if ( 1 === $iteration ) {
 						// First message - show user-friendly error.
 						return array(
-							'success' => false,
-							'error'   => self::get_user_friendly_error( $response ),
+							'success'    => false,
+							'error'      => self::get_user_friendly_error( $response ),
+							'error_data' => $response->get_error_data(),
 						);
 					} else {
 						// Mid-conversation - log silently.
@@ -480,18 +494,44 @@ class Abilities_Bridge_Message_Processor {
 		$error_code = $error->get_error_code();
 		$error_data = $error->get_error_data();
 
+		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+			Abilities_Bridge_Logger::log_action(
+				null,
+				'ai_error_debug',
+				array(
+					'code' => $error_code,
+					'data' => $error_data,
+				)
+			);
+		}
+
 		$friendly_messages = array(
 			'json_parse_error'           => 'Unable to connect to AI service. Please try again.',
 			'invalid_response_structure' => 'Received unexpected response. Please try again.',
 			'no_api_key'                 => 'API key not configured. Please check Settings.',
 			'overloaded_error'           => 'AI service is busy. Please wait a moment and try again.',
 			'rate_limit_error'           => 'Rate limit reached. Please wait before sending another message.',
+			'invalid_api_key'            => 'Invalid API key. Please check your settings.',
+			'insufficient_quota'         => 'Insufficient quota. Please check your AI provider billing.',
+			'billing_hard_limit_reached' => 'Billing limit reached. Please check your AI provider billing.',
+			'invalid_request_error'      => 'OpenAI request is invalid. Check your model and settings.',
+			'model_not_found'            => 'Selected OpenAI model is unavailable. Choose a different model in settings.',
+			'context_length_exceeded'    => 'Conversation is too long for the selected model. Start a new conversation or summarize.',
+			'authentication_error'       => 'Invalid OpenAI API key. Please check your settings.',
+			'permission_error'           => 'OpenAI API key does not have permission for the selected model.',
+			'requests'                   => 'Rate limit reached. Please wait before sending another message.',
 		);
 
 		if ( isset( $error_data['status'] ) ) {
 			$status = $error_data['status'];
 			if ( 401 === $status ) {
 				return 'Invalid API key. Please check your settings.';
+			} elseif ( 400 === $status ) {
+				$provider_message = isset( $error_data['provider_message'] ) ? sanitize_text_field( $error_data['provider_message'] ) : '';
+				if ( ! empty( $provider_message ) && current_user_can( 'manage_options' ) ) {
+					return $provider_message;
+				}
+				return 'Invalid AI request. Check your selected model and provider settings.';
 			} elseif ( 429 === $status ) {
 				return 'Rate limit reached. Please wait a moment.';
 			} elseif ( $status >= 500 ) {

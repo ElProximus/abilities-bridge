@@ -27,7 +27,7 @@ class Abilities_Bridge_MCP_Server {
 	 * Server information.
 	 */
 	const SERVER_NAME    = 'abilities-bridge';
-	const SERVER_VERSION = '1.0.0';
+	const SERVER_VERSION = '1.1.0';
 
 	/**
 	 * Handle MCP protocol request.

@@ -12,42 +12,59 @@
 	 * Handles showing/hiding consent box when API key changes
 	 */
 	function initApiKeyConsent() {
-		var $apiKeyInput = $('#abilities_bridge_api_key');
-		var $consentBox = $('#api-key-consent-box');
+		var $anthropicKeyInput = $('#abilities_bridge_api_key');
+		var $anthropicConsentBox = $('#anthropic-api-key-consent-box');
+		var $openaiKeyInput = $('#abilities_bridge_openai_api_key');
+		var $openaiConsentBox = $('#openai-api-key-consent-box');
 		var $submitButton = $('#submit');
 
-		if (!$apiKeyInput.length || !$consentBox.length) {
+		if (!$anthropicKeyInput.length && !$openaiKeyInput.length) {
 			return;
 		}
 
-		var originalApiKey = $apiKeyInput.val();
+		var originalAnthropicKey = $anthropicKeyInput.length ? $anthropicKeyInput.val() : '';
+		var originalOpenaiKey = $openaiKeyInput.length ? $openaiKeyInput.val() : '';
 
-		// Show/hide consent box when API key changes
-		$apiKeyInput.on('input', function() {
-			var currentKey = $(this).val();
-			if (currentKey && currentKey !== originalApiKey) {
-				$consentBox.show();
-				checkApiKeyConsent();
-			} else {
-				$consentBox.hide();
-				$submitButton.prop('disabled', false);
-				$('.api-key-consent-checkbox').prop('checked', false);
-			}
-		});
+		function updateConsentState() {
+			var anthropicChanged = $anthropicKeyInput.length && $anthropicKeyInput.val() && $anthropicKeyInput.val() !== originalAnthropicKey;
+			var openaiChanged = $openaiKeyInput.length && $openaiKeyInput.val() && $openaiKeyInput.val() !== originalOpenaiKey;
 
-		// Check if both checkboxes are checked
-		function checkApiKeyConsent() {
-			var allChecked = $('.api-key-consent-checkbox:checked').length === 2;
-			var apiKeyChanged = $apiKeyInput.val() && $apiKeyInput.val() !== originalApiKey;
+			var anthropicConsented = !anthropicChanged || $('.api-key-consent-checkbox:checked').length === 2;
+			var openaiConsented = !openaiChanged || $('.api-key-consent-checkbox-openai:checked').length === 2;
 
-			if (apiKeyChanged && !allChecked) {
-				$submitButton.prop('disabled', true);
-			} else {
-				$submitButton.prop('disabled', false);
-			}
+			$submitButton.prop('disabled', !(anthropicConsented && openaiConsented));
 		}
 
-		$('.api-key-consent-checkbox').on('change', checkApiKeyConsent);
+		if ($anthropicKeyInput.length && $anthropicConsentBox.length) {
+			$anthropicKeyInput.on('input', function() {
+				var currentKey = $(this).val();
+				if (currentKey && currentKey !== originalAnthropicKey) {
+					$anthropicConsentBox.show();
+					updateConsentState();
+				} else {
+					$anthropicConsentBox.hide();
+					$('.api-key-consent-checkbox').prop('checked', false);
+					updateConsentState();
+				}
+			});
+		}
+
+		if ($openaiKeyInput.length && $openaiConsentBox.length) {
+			$openaiKeyInput.on('input', function() {
+				var currentKey = $(this).val();
+				if (currentKey && currentKey !== originalOpenaiKey) {
+					$openaiConsentBox.show();
+					updateConsentState();
+				} else {
+					$openaiConsentBox.hide();
+					$('.api-key-consent-checkbox-openai').prop('checked', false);
+					updateConsentState();
+				}
+			});
+		}
+
+		$('.api-key-consent-checkbox, .api-key-consent-checkbox-openai').on('change', updateConsentState);
+
 	}
 
 	/**
@@ -198,10 +215,14 @@
 			localStorage.setItem('abilities_bridge_active_tab', tabId);
 		});
 
-		// Restore last active tab on page load
-		var activeTab = localStorage.getItem('abilities_bridge_active_tab');
+		// Restore active tab on page load: URL tab param takes priority over localStorage
+		var urlParams = new URLSearchParams(window.location.search);
+		var activeTab = urlParams.get('tab') || localStorage.getItem('abilities_bridge_active_tab');
 		if (activeTab) {
-			$('.abilities-bridge-settings-tabs .nav-tab[data-tab="' + activeTab + '"]').trigger('click');
+			var $targetTab = $('.abilities-bridge-settings-tabs .nav-tab[data-tab="' + activeTab + '"]');
+			if ($targetTab.length && !$targetTab.hasClass('nav-tab-active')) {
+				$targetTab.trigger('click');
+			}
 		}
 	}
 
@@ -221,6 +242,64 @@
 			if (confirm(abilitiesBridgeSettings.i18n.restorePromptConfirm)) {
 				$promptTextarea.val(abilitiesBridgeSettings.defaultSystemPrompt);
 			}
+		});
+	}
+
+	/**
+	 * OpenAI connection test handler
+	 */
+	function initOpenAiConnectionTest() {
+		var $button = $('#abilities-bridge-test-openai');
+		var $result = $('#abilities-bridge-openai-test-result');
+
+		if (!$button.length || !$result.length) {
+			return;
+		}
+
+		function showResult(type, message) {
+			$result
+				.removeClass('notice-success notice-error notice-warning')
+				.addClass(type)
+				.html('<p>' + message + '</p>')
+				.show();
+		}
+
+		$button.on('click', function() {
+			$button.prop('disabled', true);
+			showResult('notice-warning', abilitiesBridgeSettings.i18n.openaiTestRunning);
+
+			$.ajax({
+				url: abilitiesBridgeSettings.ajaxUrl,
+				type: 'POST',
+				data: {
+					action: 'abilities_bridge_test_openai',
+					nonce: abilitiesBridgeSettings.nonce
+				},
+				success: function(response) {
+					if (response.success) {
+						var successMessage = abilitiesBridgeSettings.i18n.openaiTestSuccess;
+						if (response.data && response.data.model) {
+							successMessage += ' Model: <code>' + response.data.model + '</code>';
+						}
+						showResult('notice-success', successMessage);
+					} else {
+						var failureMessage = abilitiesBridgeSettings.i18n.openaiTestFailed;
+						if (response.data && response.data.message) {
+							failureMessage += ' ' + response.data.message;
+						}
+						if (response.data && response.data.model) {
+							failureMessage += ' Model: <code>' + response.data.model + '</code>';
+						}
+						showResult('notice-error', failureMessage);
+					}
+				},
+				error: function() {
+					showResult('notice-error', abilitiesBridgeSettings.i18n.openaiTestAjaxError);
+				},
+				complete: function() {
+					$button.prop('disabled', false);
+				}
+			});
 		});
 	}
 
@@ -385,6 +464,7 @@
 		initMcpCopyButtons();
 		initTabSwitching();
 		initSystemPromptRestore();
+		initOpenAiConnectionTest();
 		initWelcomeWizardConsent();
 		initSecurityTabHandlers();
 	});

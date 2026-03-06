@@ -63,7 +63,7 @@ class Abilities_Bridge_MCP_Integration {
 				'requires_admin_approval' => 0,
 				'min_capability'          => 'read',
 				'description'             => 'Get current user information (name, role, capabilities)',
-				'reason_for_approval'     => 'Read-only operation, helps Claude understand user context',
+				'reason_for_approval'     => 'Read-only operation, helps the AI understand user context',
 			),
 			array(
 				'name'                    => 'core/get-environment-info',

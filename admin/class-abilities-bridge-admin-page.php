@@ -34,6 +34,8 @@ class Abilities_Bridge_Admin_Page {
 		add_action( 'wp_ajax_abilities_bridge_get_conversation_activity', array( $this, 'ajax_get_conversation_activity' ) );
 		add_action( 'wp_ajax_abilities_bridge_set_model', array( $this, 'ajax_set_model' ) );
 		add_action( 'wp_ajax_abilities_bridge_get_model', array( $this, 'ajax_get_model' ) );
+		add_action( 'wp_ajax_abilities_bridge_set_provider', array( $this, 'ajax_set_provider' ) );
+		add_action( 'wp_ajax_abilities_bridge_get_provider', array( $this, 'ajax_get_provider' ) );
 		add_action( 'wp_ajax_abilities_bridge_create_summary_continuation', array( $this, 'ajax_create_summary_continuation' ) );
 	}
 
@@ -59,6 +61,7 @@ class Abilities_Bridge_Admin_Page {
 			'abilities-bridge-settings',
 			array( new Abilities_Bridge_Settings_Page(), 'render_page' )
 		);
+
 	}
 
 	/**
@@ -72,32 +75,38 @@ class Abilities_Bridge_Admin_Page {
 			return;
 		}
 
+		$styles_version = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/css/admin-styles.css' );
+		$progress_version = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/css/progress-styles.css' );
+		$bubbles_version = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/css/chat-bubbles.css' );
+		$app_version = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/js/admin-app-simple.js' );
+		$dashboard_version = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/js/dashboard.js' );
+
 		wp_enqueue_style(
 			'abilities-bridge-styles',
 			ABILITIES_BRIDGE_PLUGIN_URL . 'admin/css/admin-styles.css',
 			array(),
-			ABILITIES_BRIDGE_VERSION
+			$styles_version ? $styles_version : ABILITIES_BRIDGE_VERSION
 		);
 
 		wp_enqueue_style(
 			'abilities-bridge-progress-styles',
 			ABILITIES_BRIDGE_PLUGIN_URL . 'admin/css/progress-styles.css',
 			array(),
-			ABILITIES_BRIDGE_VERSION
+			$progress_version ? $progress_version : ABILITIES_BRIDGE_VERSION
 		);
 
 		wp_enqueue_style(
 			'abilities-bridge-chat-bubbles',
 			ABILITIES_BRIDGE_PLUGIN_URL . 'admin/css/chat-bubbles.css',
 			array(),
-			ABILITIES_BRIDGE_VERSION
+			$bubbles_version ? $bubbles_version : ABILITIES_BRIDGE_VERSION
 		);
 
 		wp_enqueue_script(
 			'abilities-bridge-app',
 			ABILITIES_BRIDGE_PLUGIN_URL . 'admin/js/admin-app-simple.js',
 			array( 'jquery' ),
-			ABILITIES_BRIDGE_VERSION,
+			$app_version ? $app_version : ABILITIES_BRIDGE_VERSION,
 			true
 		);
 
@@ -105,7 +114,7 @@ class Abilities_Bridge_Admin_Page {
 			'abilities-bridge-dashboard',
 			ABILITIES_BRIDGE_PLUGIN_URL . 'admin/js/dashboard.js',
 			array( 'jquery' ),
-			ABILITIES_BRIDGE_VERSION,
+			$dashboard_version ? $dashboard_version : ABILITIES_BRIDGE_VERSION,
 			true
 		);
 
@@ -135,8 +144,8 @@ class Abilities_Bridge_Admin_Page {
 		}
 
 		// Check if API key is configured.
-		$api_key            = get_option( 'abilities_bridge_api_key', '' );
-		$api_key_configured = ! empty( $api_key );
+		$provider_label     = Abilities_Bridge_AI_Provider::get_provider_label();
+		$api_key_configured = Abilities_Bridge_AI_Provider::has_api_key();
 
 		?>
 		<div class="wrap abilities-bridge-wrap">
@@ -147,8 +156,9 @@ class Abilities_Bridge_Admin_Page {
 					<p>
 						<?php
 						printf(
-							/* translators: %s: settings page URL */
-							esc_html__( 'Anthropic API key not configured. Please <a href="%s">add your API key</a> to use Abilities Bridge.', 'abilities-bridge' ),
+							/* translators: 1: provider name, 2: settings page URL */
+							esc_html__( '%1$s API key not configured. Please <a href="%2$s">add your API key</a> to use Abilities Bridge.', 'abilities-bridge' ),
+							esc_html( $provider_label ),
 							esc_url( admin_url( 'admin.php?page=abilities-bridge-settings' ) )
 						);
 						?>
@@ -248,12 +258,16 @@ class Abilities_Bridge_Admin_Page {
 		if ( ! $result['success'] ) {
 			Abilities_Bridge_Logger::log_action( $conversation_id, 'message failed', $result['error'] );
 
-			wp_send_json_error(
-				array(
-					'message'    => $result['error'],
-					'error_data' => isset( $result['error_data'] ) ? $result['error_data'] : null,
-				)
+			$error_payload = array(
+				'message'    => $result['error'],
+				'error_data' => isset( $result['error_data'] ) ? $result['error_data'] : null,
 			);
+
+			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+				$error_payload['debug'] = $result;
+			}
+
+			wp_send_json_error( $error_payload );
 		}
 
 		// Check token usage.
@@ -604,10 +618,11 @@ class Abilities_Bridge_Admin_Page {
 			wp_send_json_error( array( 'message' => 'Model is required' ) );
 		}
 
-		$success = Abilities_Bridge_Claude_API::set_selected_model( $model );
+		$provider = Abilities_Bridge_AI_Provider::get_current_provider();
+		$success  = Abilities_Bridge_AI_Provider::set_selected_model( $model, $provider );
 
 		if ( $success ) {
-			$available_models = Abilities_Bridge_Claude_API::get_available_models();
+			$available_models = Abilities_Bridge_AI_Provider::get_available_models( $provider );
 			wp_send_json_success(
 				array(
 					'message'    => 'Model updated successfully',
@@ -616,7 +631,14 @@ class Abilities_Bridge_Admin_Page {
 				)
 			);
 		} else {
-			wp_send_json_error( array( 'message' => 'Invalid model' ) );
+			wp_send_json_error(
+				array(
+					'message' => sprintf(
+						'Invalid model for %s provider',
+						Abilities_Bridge_AI_Provider::get_provider_label( $provider )
+					),
+				)
+			);
 		}
 	}
 
@@ -630,11 +652,74 @@ class Abilities_Bridge_Admin_Page {
 			wp_send_json_error( array( 'message' => 'Insufficient permissions' ) );
 		}
 
-		$model            = Abilities_Bridge_Claude_API::get_selected_model();
-		$available_models = Abilities_Bridge_Claude_API::get_available_models();
+		$provider         = Abilities_Bridge_AI_Provider::get_current_provider();
+		$model            = Abilities_Bridge_AI_Provider::get_selected_model( $provider );
+		$available_models = Abilities_Bridge_AI_Provider::get_available_models( $provider );
 
 		wp_send_json_success(
 			array(
+				'provider'         => $provider,
+				'model'            => $model,
+				'model_name'       => isset( $available_models[ $model ] ) ? $available_models[ $model ] : $model,
+				'available_models' => $available_models,
+			)
+		);
+	}
+
+	/**
+	 * AJAX: Set selected provider
+	 */
+	public function ajax_set_provider() {
+		check_ajax_referer( 'abilities_bridge_nonce', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => 'Insufficient permissions' ) );
+		}
+
+		$provider = isset( $_POST['provider'] ) ? sanitize_text_field( wp_unslash( $_POST['provider'] ) ) : '';
+
+		if ( empty( $provider ) ) {
+			wp_send_json_error( array( 'message' => 'Provider is required' ) );
+		}
+
+		$success = Abilities_Bridge_AI_Provider::set_selected_provider( $provider );
+
+		if ( $success ) {
+			$available_models = Abilities_Bridge_AI_Provider::get_available_models( $provider );
+			$model            = Abilities_Bridge_AI_Provider::get_selected_model( $provider );
+			wp_send_json_success(
+				array(
+					'message'         => 'Provider updated successfully',
+					'provider'        => $provider,
+					'provider_label'  => Abilities_Bridge_AI_Provider::get_provider_label( $provider ),
+					'model'           => $model,
+					'model_name'      => isset( $available_models[ $model ] ) ? $available_models[ $model ] : $model,
+					'available_models'=> $available_models,
+				)
+			);
+		} else {
+			wp_send_json_error( array( 'message' => 'Invalid provider' ) );
+		}
+	}
+
+	/**
+	 * AJAX: Get selected provider
+	 */
+	public function ajax_get_provider() {
+		check_ajax_referer( 'abilities_bridge_nonce', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => 'Insufficient permissions' ) );
+		}
+
+		$provider         = Abilities_Bridge_AI_Provider::get_current_provider();
+		$available_models = Abilities_Bridge_AI_Provider::get_available_models( $provider );
+		$model            = Abilities_Bridge_AI_Provider::get_selected_model( $provider );
+
+		wp_send_json_success(
+			array(
+				'provider'         => $provider,
+				'provider_label'   => Abilities_Bridge_AI_Provider::get_provider_label( $provider ),
 				'model'            => $model,
 				'model_name'       => isset( $available_models[ $model ] ) ? $available_models[ $model ] : $model,
 				'available_models' => $available_models,
@@ -680,10 +765,11 @@ class Abilities_Bridge_Admin_Page {
 			array(
 				'user_id'                => get_current_user_id(),
 				'title'                  => sanitize_text_field( $parent_conversation->title ), // Keep same title.
+				'provider'               => ! empty( $parent_conversation->provider ) ? sanitize_text_field( $parent_conversation->provider ) : Abilities_Bridge_AI_Provider::get_current_provider(),
 				'model'                  => sanitize_text_field( $parent_conversation->model ),
 				'parent_conversation_id' => $parent_conversation_id,
 			),
-			array( '%d', '%s', '%s', '%d' )
+			array( '%d', '%s', '%s', '%s', '%d' )
 		);
 
 		if ( ! $result ) {

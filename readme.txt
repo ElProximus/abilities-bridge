@@ -1,28 +1,28 @@
 === Abilities Bridge ===
 Contributors: joe12345campbell
-Tags: ai, claude, admin, mcp, abilities
+Tags: ai, claude, openai, admin, mcp, abilities
 Requires at least: 6.2
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
 
-MCP server for WordPress. Connect Claude AI to execute WordPress Abilities with configurable permissions.
+MCP server for WordPress. Connect Claude AI or OpenAI to execute WordPress Abilities with configurable permissions.
 
 == Description ==
 
-Abilities Bridge provides an MCP (Model Context Protocol) server for WordPress, allowing Claude AI to execute WordPress Abilities with granular permission controls. It includes an admin chat interface and persistent memory storage.
+Abilities Bridge provides an MCP (Model Context Protocol) server for WordPress, allowing Claude AI or OpenAI to execute WordPress Abilities with granular permission controls. It includes an admin chat interface and persistent memory storage.
 
 == External Services ==
 
 **IMPORTANT: This plugin connects to external API services.**
 
-This plugin requires communication with Anthropic's Claude API or a compatible API service to function. Depending on how you use the plugin:
+This plugin requires communication with Anthropic's Claude API, OpenAI's API, or a compatible API service to function. Depending on how you use the plugin:
 
 **Option 1: WordPress Admin Interface (API Key)**
-* Requires your own Anthropic API key from console.anthropic.com or compatible service
+* Requires your own Anthropic API key from console.anthropic.com or OpenAI API key from platform.openai.com
 * Uses API credits from your account
 * Data sent directly from your server to the API provider
 
@@ -32,9 +32,9 @@ This plugin requires communication with Anthropic's Claude API or a compatible A
 * Uses your Claude subscription quota or API credits
 * Data sent from MCP client to Anthropic
 
-= What Data Is Sent to Anthropic =
+= What Data Is Sent to External Services =
 
-When you use this plugin, the following data is transmitted to Anthropic's Claude API (https://api.anthropic.com):
+When you use this plugin, the following data is transmitted to your selected AI provider — Anthropic's Claude API (https://api.anthropic.com) or OpenAI's API (https://api.openai.com):
 
 * Your chat messages and prompts
 * Memory contents
@@ -46,16 +46,21 @@ When you use this plugin, the following data is transmitted to Anthropic's Claud
 * When Claude Desktop or other MCP clients use WordPress tools
 * When the AI executes abilities
 
-**No data is sent to Anthropic without your explicit action** (sending a chat message or using MCP tools). The plugin does not send telemetry or usage statistics to any third party.
+**No data is sent without your explicit action** (sending a chat message or using MCP tools). The plugin does not send telemetry or usage statistics to any third party.
 
 = Legal & Privacy Information =
 
+**Anthropic (Claude):**
 * Anthropic Privacy Policy: https://www.anthropic.com/legal/privacy
 * Anthropic Terms of Service: https://www.anthropic.com/legal/consumer-terms
 * Anthropic Commercial Terms: https://www.anthropic.com/legal/commercial-terms
 * Claude.ai Terms: https://claude.ai/legal
 
-By using this plugin, you acknowledge that data will be transmitted to Anthropic's servers for processing. Please review their privacy policy before use.
+**OpenAI:**
+* OpenAI Privacy Policy: https://openai.com/policies/privacy-policy
+* OpenAI Terms of Use: https://openai.com/policies/terms-of-use
+
+By using this plugin, you acknowledge that data will be transmitted to your selected AI provider's servers for processing. Please review their privacy policy before use.
 
 = Key Features =
 
@@ -64,7 +69,7 @@ By using this plugin, you acknowledge that data will be transmitted to Anthropic
 * **Memory Tool** - AI can maintain persistent notes in a database-backed storage system
 * **Abilities Execution** - Run authorized WordPress Abilities with permission controls
 * **Conversation Management** - Save, resume, and manage multiple conversations
-* **Claude Models** - Choose between Opus 4.5 (most intelligent), Sonnet 4.5 (balanced), or Haiku 4.5 (fastest)
+* **AI Models** - Claude Opus 4.6, Sonnet 4.5, Haiku 4.5 (Anthropic) and GPT-5.2, GPT-5.1, GPT-5 (OpenAI)
 * **OAuth 2.0** - Secure authentication for MCP connections
 
 = Memory =
@@ -95,8 +100,8 @@ Requires Abilities API or WordPress 6.9+.
 
 **1. WordPress Admin Interface**
 - Built-in chat interface in WordPress admin
-- **Requires**: Anthropic API key (console.anthropic.com)
-- **Uses**: Your Anthropic API credits
+- **Requires**: Anthropic API key (console.anthropic.com) or OpenAI API key (platform.openai.com)
+- **Uses**: Your API credits
 
 **2. Claude Custom Connector (Model Context Protocol)**
 - Connect WordPress to Claude Desktop web & app
@@ -114,7 +119,7 @@ Requires Abilities API or WordPress 6.9+.
 = Requirements =
 
 **For WordPress Admin Interface:**
-* Anthropic API key (from console.anthropic.com) or compatible API service
+* Anthropic API key (from console.anthropic.com) or OpenAI API key (from platform.openai.com) or compatible API service
 
 **For MCP OAuth 2.0 Connection:**
 * Claude account (claude.ai) or Anthropic API key (from console.anthropic.com)
@@ -131,7 +136,7 @@ Requires Abilities API or WordPress 6.9+.
 2. Activate the plugin through the 'Plugins' menu
 3. Complete the welcome wizard to grant consent
 4. **Choose your connection method:**
-   - **Admin Interface**: Enter your Anthropic API key in Settings
+   - **Admin Interface**: Enter your Anthropic or OpenAI API key in Settings
    - **MCP OAuth 2.0**: Follow MCP setup below
 
 = Claude Custom Connector MCP OAuth 2.0 Setup (Claude Account Required) =
@@ -145,11 +150,11 @@ Requires Abilities API or WordPress 6.9+.
 
 == Frequently Asked Questions ==
 
-= Do I need an Anthropic API key to use this plugin? =
+= Do I need an API key to use this plugin? =
 
 **It depends on how you want to use it:**
 
-* **WordPress Admin Interface**: YES - Requires Anthropic API key from console.anthropic.com or compatible API service
+* **WordPress Admin Interface**: YES - Requires an Anthropic API key (console.anthropic.com) or OpenAI API key (platform.openai.com)
 * **MCP Claude Desktop**: NO - Only requires a Claude account
 * **MCP Local Config**: Either API key OR Claude account
 
@@ -160,19 +165,23 @@ Yes! Use the OAuth 2.0 MCP. This connects your WordPress site to Claude using yo
 = What's the difference between API key and Claude account? =
 
 * **Anthropic API Key**: Developer account with pay-per-token pricing at console.anthropic.com
-* **Claude Account**: Consumer subscription at claude.ai
+* **OpenAI API Key**: Developer account with pay-per-token pricing at platform.openai.com
+* **Claude Account**: Consumer subscription at claude.ai (for MCP connections only)
 
 = Is this safe to use? =
 
 Abilities Bridge provides granular permission controls for all capabilities. Memory data is stored in the database with size limits. Abilities execution requires explicit consent and individual ability authorization.
 
-= Where do I get an Anthropic API key? =
+= Where do I get an API key? =
 
-Visit https://console.anthropic.com/ to sign up and generate an API key. However, you only need this for the WordPress admin interface. If using MCP OAuth 2.0, you just need a Claude account from claude.ai.
+* **Anthropic**: Visit https://console.anthropic.com/ to sign up and generate an API key.
+* **OpenAI**: Visit https://platform.openai.com/ to sign up and generate an API key.
+
+You only need an API key for the WordPress admin interface. If using MCP OAuth 2.0, you just need a Claude account from claude.ai.
 
 = What data does this plugin send to external services? =
 
-This plugin sends data to Anthropic's Claude API (https://api.anthropic.com) including:
+This plugin sends data to your selected AI provider — Anthropic's Claude API (https://api.anthropic.com) or OpenAI's API (https://api.openai.com) — including:
 * Your chat messages
 * Memory contents
 * Abilities execution requests
@@ -181,9 +190,9 @@ Data is only sent when you actively use the chat interface or MCP tools. No back
 
 = Is my data secure? =
 
-Data transmission to Anthropic uses HTTPS encryption. Your API key (if used) is stored in your WordPress database. OAuth tokens (for MCP) are encrypted using AES-256-CBC.
+Data transmission uses HTTPS encryption. Your API key (if used) is stored in your WordPress database. OAuth tokens (for MCP) are encrypted using AES-256-CBC.
 
-Please review Anthropic's security practices and privacy policy at https://www.anthropic.com/legal/privacy
+Please review your provider's security practices and privacy policy at https://www.anthropic.com/legal/privacy (Anthropic) or https://openai.com/policies/privacy-policy (OpenAI).
 
 = Can I use this plugin offline? =
 
@@ -195,11 +204,11 @@ No. This plugin does NOT send usage statistics, error reports, or any telemetry 
 
 = What is the Memory Tool? =
 
-The Memory Tool allows Claude to store persistent memories in the WordPress database. It's limited to 1MB per entry and 50MB total. Enable it in Settings > Memory.
+The Memory Tool allows the AI to store persistent memories in the WordPress database. It's limited to 1MB per entry and 50MB total. Enable it in Settings > Memory.
 
 = What are Abilities? =
 
-Abilities allow Claude to execute WordPress functions (like creating posts, managing users, etc.) when authorized. Each ability must be individually enabled in Abilities Bridge > Abilities. Requires Abilities API or WordPress 6.9+.
+Abilities allow the AI to execute WordPress functions (like creating posts, managing users, etc.) when authorized. Each ability must be individually enabled in Abilities Bridge > Abilities. Requires Abilities API or WordPress 6.9+.
 
 = How do I customize Claude's behavior? =
 
@@ -215,6 +224,11 @@ No! MCP is optional. You can use the built-in WordPress chat interface (requires
 
 == Changelog ==
 
+= 1.1.0 =
+* Updated Pro Features tab with Concierge Service and Site Abilities Plugin
+* Added OpenAI references throughout documentation and user-facing text
+* Updated About tab to reflect multi-provider support
+
 = 1.0.0 =
 * Initial release
 * MCP server for WordPress Abilities execution
@@ -226,13 +240,13 @@ No! MCP is optional. You can use the built-in WordPress chat interface (requires
 
 = Data Transmission =
 
-**This plugin sends data to Anthropic's API** (https://api.anthropic.com) when you interact with the AI:
+**This plugin sends data to your selected AI provider** — Anthropic's API (https://api.anthropic.com) or OpenAI's API (https://api.openai.com) — when you interact with the AI:
 * Chat messages and conversation history
 * Memory contents
 * Abilities execution requests
 
 **Authentication Methods:**
-* **API Key**: Data sent directly from your WordPress server to Anthropic
+* **API Key**: Data sent directly from your WordPress server to Anthropic or OpenAI
 * **OAuth 2.0**: Data sent from MCP client (like Claude Desktop) to Anthropic
 
 **You control what data is sent** - The AI only accesses data when you ask it to, or when you enable specific tools.
@@ -251,10 +265,11 @@ No! MCP is optional. You can use the built-in WordPress chat interface (requires
 
 * **WordPress**: Conversations and logs stored in your database until manually deleted
 * **Anthropic**: Refer to Anthropic's data retention policy at https://www.anthropic.com/legal/privacy
+* **OpenAI**: Refer to OpenAI's data retention policy at https://openai.com/policies/privacy-policy
 
 = No Telemetry =
 
-This plugin does **NOT** send any usage statistics, telemetry, or analytics to the plugin developer or any third party (except Anthropic for AI functionality).
+This plugin does **NOT** send any usage statistics, telemetry, or analytics to the plugin developer or any third party (except your selected AI provider for AI functionality).
 
 == Support ==
 

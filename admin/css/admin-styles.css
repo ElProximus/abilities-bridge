@@ -152,8 +152,10 @@
 	color: #2c3338;
 }
 
-#abilities-bridge-model-select {
+#abilities-bridge-model-select,
+#abilities-bridge-provider-select {
 	width: 100%;
+	max-width: 100%;
 	padding: 8px;
 	padding-right: 32px;
 	font-size: 13px;
@@ -172,11 +174,13 @@
 	transition: border-color 0.2s ease;
 }
 
-#abilities-bridge-model-select:hover {
+#abilities-bridge-model-select:hover,
+#abilities-bridge-provider-select:hover {
 	border-color: #2271b1;
 }
 
-#abilities-bridge-model-select:focus {
+#abilities-bridge-model-select:focus,
+#abilities-bridge-provider-select:focus {
 	border-color: #2271b1;
 	box-shadow: 0 0 0 1px #2271b1;
 	outline: none;

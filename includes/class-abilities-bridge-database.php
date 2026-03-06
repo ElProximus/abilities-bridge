@@ -75,6 +75,7 @@ class Abilities_Bridge_Database {
 			id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
 			user_id bigint(20) UNSIGNED NOT NULL,
 			title varchar(255) NOT NULL DEFAULT 'New Conversation',
+			provider varchar(20) NOT NULL DEFAULT 'anthropic',
 			model varchar(100) NOT NULL DEFAULT 'claude-sonnet-4-5-20250929',
 			parent_conversation_id bigint(20) UNSIGNED DEFAULT NULL,
 			deleted_at datetime DEFAULT NULL,
@@ -85,7 +86,8 @@ class Abilities_Bridge_Database {
 			KEY user_id (user_id),
 			KEY created_at (created_at),
 			KEY deleted_at (deleted_at),
-			KEY parent_conversation_id (parent_conversation_id)
+			KEY parent_conversation_id (parent_conversation_id),
+			KEY provider (provider)
 		) $charset_collate;";
 
 		// Messages table.
@@ -214,6 +216,36 @@ class Abilities_Bridge_Database {
 				)
 			);
 		}
+
+		// Check if provider column exists.
+		$provider_column_exists = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT * FROM INFORMATION_SCHEMA.COLUMNS
+				WHERE TABLE_SCHEMA = %s
+				AND TABLE_NAME = %s
+				AND COLUMN_NAME = 'provider'",
+				DB_NAME,
+				$conversations_table
+			)
+		);
+
+		// Add provider column if it doesn't exist.
+		if ( empty( $provider_column_exists ) ) {
+			$wpdb->query(
+				$wpdb->prepare(
+					"ALTER TABLE %i ADD COLUMN provider varchar(20) NOT NULL DEFAULT 'anthropic' AFTER title, ADD KEY provider (provider)",
+					$conversations_table
+				)
+			);
+		}
+
+		// Backfill provider based on model prefix if missing.
+		$wpdb->query(
+			$wpdb->prepare(
+				"UPDATE %i SET provider = 'openai' WHERE (provider IS NULL OR provider = '') AND model LIKE 'gpt-%'",
+				$conversations_table
+			)
+		);
 
 		// Check if parent_conversation_id column exists.
 		$parent_column_exists = $wpdb->get_results(
@@ -372,9 +404,10 @@ class Abilities_Bridge_Database {
 	 * @param int    $user_id User ID.
 	 * @param string $title Conversation title.
 	 * @param string $model Model identifier (default: claude-sonnet-4-5-20250929).
+	 * @param string $provider Provider key (default: anthropic).
 	 * @return int|false Conversation ID or false on failure
 	 */
-	public static function create_conversation( $user_id, $title = 'New Conversation', $model = 'claude-sonnet-4-5-20250929' ) {
+	public static function create_conversation( $user_id, $title = 'New Conversation', $model = 'claude-sonnet-4-5-20250929', $provider = 'anthropic' ) {
 		global $wpdb;
 
 		$result = $wpdb->insert(
@@ -382,9 +415,10 @@ class Abilities_Bridge_Database {
 			array(
 				'user_id' => $user_id,
 				'title'   => $title,
+				'provider' => $provider,
 				'model'   => $model,
 			),
-			array( '%d', '%s', '%s' )
+			array( '%d', '%s', '%s', '%s' )
 		);
 
 		return $result ? $wpdb->insert_id : false;

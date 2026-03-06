@@ -19,6 +19,7 @@
 	function init() {
 		bindEvents();
 		initProgressBar();
+		loadProviderState();
 		// Load conversations after a short delay to ensure page is ready
 		setTimeout(function() {
 			loadConversations();
@@ -34,7 +35,7 @@
 			const activityHtml = `
 				<div id="abilities-bridge-activity-log" style="display: none;">
 					<div class="activity-header">
-						<strong>⚡ Claude Activity</strong>
+						<strong>⚡ AI Activity</strong>
 					</div>
 					<div class="activity-list" id="activity-list">
 						<!-- Activities will be added here -->
@@ -58,6 +59,7 @@
 		$('#abilities-bridge-delete-conversation').on('click', handleDeleteConversation);
 		$('#abilities-bridge-refresh-conversations').on('click', loadConversations);
 		$('#abilities-bridge-model-select').on('change', handleModelChange);
+		$('#abilities-bridge-provider-select').on('change', handleProviderChange);
 		$('#abilities-bridge-stop-button').on('click', handleStopRequest);
 
 		$('#abilities-bridge-chat-input').on('keydown', function(e) {
@@ -144,7 +146,14 @@
 					// Update token meter after message
 					updateTokenMeter();
 				} else {
-					handleError(response.data.message || 'Unknown error');
+					var message = response.data.message || 'Unknown error';
+					if (response.data.error_data) {
+						message += '\n\nDetails:\n' + JSON.stringify(response.data.error_data, null, 2);
+					}
+					if (response.data.debug) {
+						message += '\n\nDebug:\n' + JSON.stringify(response.data.debug, null, 2);
+					}
+					handleError(message);
 				}
 				// Stop activity polling
 				stopActivityPolling();
@@ -163,7 +172,7 @@
 				stopActivityPolling();
 				if (status === 'timeout') {
 					// Timeout - show message but don't fail completely
-					appendMessage('system', '⏱️ Request is taking longer than expected. Claude may still be processing. Please wait a moment and refresh if needed.');
+					appendMessage('system', '⏱️ Request is taking longer than expected. The AI may still be processing. Please wait a moment and refresh if needed.');
 				} else if (status === 'abort') {
 					// Request was aborted by user
 					appendMessage('system', '⏹ Request stopped by user.');
@@ -268,7 +277,7 @@
 	function showSimpleProgress() {
 		$('#activity-list').empty();
 		displayedActivities.clear(); // Reset tracking for new request
-		addActivity('⏳', 'Sending request to Claude...', 'initial-request');
+		addActivity('⏳', 'Sending request to AI...', 'initial-request');
 		$('#abilities-bridge-activity-log').slideDown(200);
 	}
 
@@ -370,7 +379,7 @@
 
 		const messageHtml = `
 			<div class="chat-message ${messageClass}${excludedClass}">
-				<div class="message-role">${role === 'user' ? 'You' : role === 'system' ? 'System' : role === 'error' ? 'Error' : 'Claude'}${excludedLabel}</div>
+				<div class="message-role">${role === 'user' ? 'You' : role === 'system' ? 'System' : role === 'error' ? 'Error' : 'AI'}${excludedLabel}</div>
 				<div class="message-content">${escapeHtml(content)}</div>
 			</div>
 		`;
@@ -537,7 +546,7 @@
 			$('#abilities-bridge-chat-messages').empty();
 
 			// Show welcome message (matches initial page load behavior)
-			appendMessage('assistant', 'Hi, I\'m Claude. How can I help you today?');
+			appendMessage('assistant', 'Hi, I\'m your AI assistant. How can I help you today?');
 
 			$('#abilities-bridge-conversation-select').val('');
 			$('#abilities-bridge-conversation-info').hide();
@@ -565,6 +574,9 @@
 			success: function(response) {
 				if (response.success) {
 					currentConversationId = conversationId;
+					// Sync provider/model selectors to match the loaded conversation
+					syncProviderFromConversation(response.data.conversation);
+
 
 					// Clear and rebuild messages
 					const $chatMessages = $('#abilities-bridge-chat-messages');
@@ -605,6 +617,8 @@
 			success: function(response) {
 				if (response.success) {
 					currentConversationId = conversationId;
+					// Sync provider/model selectors to match the loaded conversation
+					syncProviderFromConversation(response.data.conversation);
 
 					// Clear and rebuild messages
 					const $chatMessages = $('#abilities-bridge-chat-messages');
@@ -696,6 +710,127 @@
 	}
 
 	/**
+	 * Handle provider selection change
+	 */
+	function handleProviderChange() {
+		const selectedProvider = $('#abilities-bridge-provider-select').val();
+
+		$.ajax({
+			url: abilitiesBridgeData.ajax_url,
+			type: 'POST',
+			data: {
+				action: 'abilities_bridge_set_provider',
+				nonce: abilitiesBridgeData.nonce,
+				provider: selectedProvider
+			},
+			success: function(response) {
+				if (response.success) {
+					appendMessage('system', 'Provider changed to ' + response.data.provider_label + '. Starting new conversation...');
+
+					updateModelOptions(response.data.available_models, response.data.model);
+
+					handleNewConversation();
+
+					$('#abilities-bridge-model-description').text('Using: ' + response.data.model_name);
+				} else {
+					alert('Error: ' + (response.data.message || 'Failed to change provider'));
+				}
+			},
+			error: function() {
+				alert('Error: Failed to change provider');
+			}
+		});
+	}
+
+	/**
+	 * Update model options based on provider
+	 */
+	function updateModelOptions(availableModels, selectedModel) {
+		const $select = $('#abilities-bridge-model-select');
+		if (!$select.length) {
+			return;
+		}
+
+		$select.empty();
+		Object.keys(availableModels || {}).forEach(function(modelId) {
+			const name = availableModels[modelId];
+			const $option = $('<option></option>').val(modelId).text(name);
+			if (modelId === selectedModel) {
+				$option.prop('selected', true);
+			}
+			$select.append($option);
+		});
+	}
+
+	/**
+	 * Sync provider/model UI to match a loaded conversation's provider
+	 */
+	function syncProviderFromConversation(conversation) {
+		if (!conversation || !conversation.provider) return;
+
+		var currentProvider = $('#abilities-bridge-provider-select').val();
+		var conversationProvider = conversation.provider;
+		var conversationModel = conversation.model;
+
+		if (currentProvider !== conversationProvider) {
+			// Provider differs — update dropdown and sync backend
+			$('#abilities-bridge-provider-select').val(conversationProvider);
+
+			$.ajax({
+				url: abilitiesBridgeData.ajax_url,
+				type: 'POST',
+				data: {
+					action: 'abilities_bridge_set_provider',
+					nonce: abilitiesBridgeData.nonce,
+					provider: conversationProvider
+				},
+				success: function(response) {
+					if (response.success) {
+						updateModelOptions(response.data.available_models, conversationModel || response.data.model);
+						var models = response.data.available_models || {};
+						var modelName = models[conversationModel] || conversationModel || response.data.model_name;
+						$('#abilities-bridge-model-description').text('Using: ' + modelName);
+					}
+				}
+			});
+		} else if (conversationModel) {
+			// Same provider — just sync model selector if needed
+			var $modelSelect = $('#abilities-bridge-model-select');
+			if ($modelSelect.length && $modelSelect.val() !== conversationModel) {
+				$modelSelect.val(conversationModel);
+				var modelName = $modelSelect.find('option:selected').text() || conversationModel;
+				$('#abilities-bridge-model-description').text('Using: ' + modelName);
+			}
+		}
+	}
+
+	/**
+	 * Load provider state and refresh model list
+	 */
+	function loadProviderState() {
+		const $providerSelect = $('#abilities-bridge-provider-select');
+		if (!$providerSelect.length) {
+			return;
+		}
+
+		$.ajax({
+			url: abilitiesBridgeData.ajax_url,
+			type: 'POST',
+			data: {
+				action: 'abilities_bridge_get_provider',
+				nonce: abilitiesBridgeData.nonce
+			},
+			success: function(response) {
+				if (response.success) {
+					$providerSelect.val(response.data.provider);
+					updateModelOptions(response.data.available_models, response.data.model);
+					$('#abilities-bridge-model-description').text('Using: ' + response.data.model_name);
+				}
+			}
+		});
+	}
+
+	/**
 	 * Update token meter display
 	 */
 	function updateTokenMeter() {
@@ -725,10 +860,10 @@
 					// Show model info
 					if (data.input_limit >= 1000000) {
 						$('.token-limit-info').text('1M context available');
-						$('.token-model').text(data.model || 'Claude 3.5 Sonnet');
+						$('.token-model').text(data.model || 'Default model');
 					} else if (data.input_limit >= 200000) {
 						$('.token-limit-info').text('200k context');
-						$('.token-model').text(data.model || 'Claude 3.5 Sonnet');
+						$('.token-model').text(data.model || 'Default model');
 					} else {
 						$('.token-limit-info').text('No limit enforced');
 					}
@@ -920,7 +1055,7 @@
 		// Disable button to prevent double-click
 		$('.summarize-conversation-btn').prop('disabled', true).text('Creating summary...');
 
-		// Send summary request to Claude
+		// Send summary request to AI
 		const summaryPrompt = "Please create a comprehensive summary of our entire conversation so far. Include:\n\n" +
 			"1. Main topics and objectives discussed\n" +
 			"2. Key decisions and conclusions reached\n" +
@@ -963,7 +1098,7 @@
 					const buttonHtml = `
 						<div class="summary-continuation-actions" style="margin: 15px 0; padding: 15px; background: #f0f6fc; border-radius: 6px; border-left: 4px solid #0969da;">
 							<p style="margin: 0 0 10px 0;"><strong>💫 Summary created!</strong></p>
-							<p style="margin: 0 0 15px 0; font-size: 13px;">Click below to start a new session with fresh token context. The summary will be used as context for Claude.</p>
+							<p style="margin: 0 0 15px 0; font-size: 13px;">Click below to start a new session with fresh token context. The summary will be used as context for the AI.</p>
 							<button class="button button-primary start-new-session-btn" data-conversation-id="${conversationId}" data-summary="${escapeHtml(summaryText)}">
 								✨ Start New Session with Summary
 							</button>

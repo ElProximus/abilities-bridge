@@ -67,6 +67,7 @@ class Abilities_Bridge_Settings_Page {
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
 		add_action( 'admin_init', array( $this, 'handle_mcp_actions' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
+		add_action( 'wp_ajax_abilities_bridge_test_openai', array( $this, 'ajax_test_openai_connection' ) );
 	}
 
 	/**
@@ -81,18 +82,21 @@ class Abilities_Bridge_Settings_Page {
 			return;
 		}
 
+		$settings_css_version = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/css/settings-page.css' );
+		$settings_js_version  = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/js/settings-page.js' );
+
 		wp_enqueue_style(
 			'abilities-bridge-settings-page',
 			ABILITIES_BRIDGE_PLUGIN_URL . 'admin/css/settings-page.css',
 			array(),
-			ABILITIES_BRIDGE_VERSION
+			$settings_css_version ? $settings_css_version : ABILITIES_BRIDGE_VERSION
 		);
 
 		wp_enqueue_script(
 			'abilities-bridge-settings-page',
 			ABILITIES_BRIDGE_PLUGIN_URL . 'admin/js/settings-page.js',
 			array( 'jquery' ),
-			ABILITIES_BRIDGE_VERSION,
+			$settings_js_version ? $settings_js_version : ABILITIES_BRIDGE_VERSION,
 			true
 		);
 
@@ -100,12 +104,17 @@ class Abilities_Bridge_Settings_Page {
 			'abilities-bridge-settings-page',
 			'abilitiesBridgeSettings',
 			array(
+				'ajaxUrl'              => admin_url( 'admin-ajax.php' ),
 				'nonce'               => wp_create_nonce( 'abilities_bridge_settings' ),
 				'memoryConsentGiven'  => (bool) get_option( 'abilities_bridge_memory_consent', false ),
 				'i18n'                => array(
 					'copied'               => __( 'Copied!', 'abilities-bridge' ),
 					'copyFailed'           => __( 'Failed to copy to clipboard', 'abilities-bridge' ),
 					'restorePromptConfirm' => __( 'Are you sure you want to restore the default system prompt? Your customizations will be lost.', 'abilities-bridge' ),
+					'openaiTestRunning'    => __( 'Testing OpenAI connection...', 'abilities-bridge' ),
+					'openaiTestSuccess'    => __( 'OpenAI connection successful.', 'abilities-bridge' ),
+					'openaiTestFailed'     => __( 'OpenAI test failed.', 'abilities-bridge' ),
+					'openaiTestAjaxError'  => __( 'OpenAI test could not be completed. Please try again.', 'abilities-bridge' ),
 				),
 				'defaultSystemPrompt' => Abilities_Bridge_Claude_API::get_default_system_prompt(),
 			)
@@ -119,6 +128,16 @@ class Abilities_Bridge_Settings_Page {
 		register_setting(
 			'abilities_bridge_settings',
 			'abilities_bridge_api_key',
+			array(
+				'type'              => 'string',
+				'sanitize_callback' => 'sanitize_text_field',
+				'default'           => '',
+			)
+		);
+
+		register_setting(
+			'abilities_bridge_settings',
+			'abilities_bridge_openai_api_key',
 			array(
 				'type'              => 'string',
 				'sanitize_callback' => 'sanitize_text_field',
@@ -148,15 +167,23 @@ class Abilities_Bridge_Settings_Page {
 
 		add_settings_section(
 			'abilities_bridge_api_section',
-			__( 'Anthropic API Configuration', 'abilities-bridge' ),
+			__( 'AI Provider Configuration', 'abilities-bridge' ),
 			array( $this, 'render_section' ),
 			'abilities-bridge-settings'
 		);
 
 		add_settings_field(
 			'abilities_bridge_api_key',
-			__( 'API Key', 'abilities-bridge' ),
+			__( 'Anthropic API Key', 'abilities-bridge' ),
 			array( $this, 'render_api_key_field' ),
+			'abilities-bridge-settings',
+			'abilities_bridge_api_section'
+		);
+
+		add_settings_field(
+			'abilities_bridge_openai_api_key',
+			__( 'OpenAI API Key', 'abilities-bridge' ),
+			array( $this, 'render_openai_api_key_field' ),
 			'abilities-bridge-settings',
 			'abilities_bridge_api_section'
 		);
@@ -181,7 +208,7 @@ class Abilities_Bridge_Settings_Page {
 
 		add_settings_field(
 			'abilities_bridge_system_prompt',
-			__( 'Claude System Prompt', 'abilities-bridge' ),
+			__( 'System Prompt', 'abilities-bridge' ),
 			array( $this, 'render_system_prompt_field' ),
 			'abilities-bridge-settings',
 			'abilities_bridge_prompt_section'
@@ -256,7 +283,7 @@ class Abilities_Bridge_Settings_Page {
 			printf(
 				wp_kses(
 					/* translators: %s: Anthropic console URL */
-					__( 'Enter your Anthropic API key. You can get one from the <a href="%s" target="_blank">Anthropic Console</a>.', 'abilities-bridge' ),
+					__( 'Enter your API keys below. You can get an Anthropic key from the <a href="%s" target="_blank">Anthropic Console</a>.', 'abilities-bridge' ),
 					array(
 						'a' => array(
 							'href'   => array(),
@@ -290,7 +317,7 @@ class Abilities_Bridge_Settings_Page {
 		</p>
 
 		<!-- API Key Consent Checkboxes -->
-		<div id="api-key-consent-box" style="background: #fff3cd; border: 1px solid #ffc107; padding: 15px; margin: 15px 0; border-radius: 4px; display: none;">
+		<div id="anthropic-api-key-consent-box" style="background: #fff3cd; border: 1px solid #ffc107; padding: 15px; margin: 15px 0; border-radius: 4px; display: none;">
 			<h4 style="margin-top: 0; color: #856404;">⚠️ <?php esc_html_e( 'API Key Consent Required', 'abilities-bridge' ); ?></h4>
 			<p style="margin-bottom: 15px;"><strong><?php esc_html_e( 'Before saving your API key, please confirm:', 'abilities-bridge' ); ?></strong></p>
 
@@ -301,10 +328,120 @@ class Abilities_Bridge_Settings_Page {
 
 			<label style="display: block; margin-bottom: 0; cursor: pointer;">
 				<input type="checkbox" id="consent-api-billing" class="api-key-consent-checkbox" value="1">
-				<?php esc_html_e( 'I understand API costs and Claude Account subscription costs are my responsibility and billed by Anthropic directly. The makers of this plugin are NOT responsible for API usage costs, Claude Account subscription fees, or billing.', 'abilities-bridge' ); ?>
+				<?php esc_html_e( 'I understand API costs are my responsibility and billed by my AI provider directly. The makers of this plugin are NOT responsible for API usage costs or billing.', 'abilities-bridge' ); ?>
 			</label>
 		</div>
 		<?php
+	}
+
+	/**
+	 * Render OpenAI API key field
+	 */
+	public function render_openai_api_key_field() {
+		$api_key = get_option( 'abilities_bridge_openai_api_key', '' );
+		$model   = Abilities_Bridge_AI_Provider::get_selected_model( Abilities_Bridge_AI_Provider::PROVIDER_OPENAI );
+		?>
+		<input
+			type="password"
+			name="abilities_bridge_openai_api_key"
+			id="abilities_bridge_openai_api_key"
+			value="<?php echo esc_attr( $api_key ); ?>"
+			class="regular-text"
+			autocomplete="off"
+		/>
+		<p class="description">
+			<?php esc_html_e( 'Your OpenAI API key (starts with "sk-"). This will be stored securely in your database.', 'abilities-bridge' ); ?>
+		</p>
+		<p>
+			<button type="button" class="button" id="abilities-bridge-test-openai">
+				<?php esc_html_e( 'Test OpenAI Connection', 'abilities-bridge' ); ?>
+			</button>
+		</p>
+		<div id="abilities-bridge-openai-test-result" class="notice inline" style="display: none; margin: 10px 0 0 0;"></div>
+		<p class="description">
+			<?php
+			printf(
+				/* translators: %s: selected model id */
+				esc_html__( 'Current OpenAI model: %s', 'abilities-bridge' ),
+				'<code>' . esc_html( $model ) . '</code>'
+			);
+			?>
+		</p>
+
+		<!-- API Key Consent Checkboxes -->
+		<div id="openai-api-key-consent-box" style="background: #fff3cd; border: 1px solid #ffc107; padding: 15px; margin: 15px 0; border-radius: 4px; display: none;">
+			<h4 style="margin-top: 0; color: #856404;">⚠️ <?php esc_html_e( 'API Key Consent Required', 'abilities-bridge' ); ?></h4>
+			<p style="margin-bottom: 15px;"><strong><?php esc_html_e( 'Before saving your API key, please confirm:', 'abilities-bridge' ); ?></strong></p>
+
+			<label style="display: block; margin-bottom: 10px; cursor: pointer;">
+				<input type="checkbox" id="consent-openai-api-permissions" class="api-key-consent-checkbox-openai" value="1">
+				<?php esc_html_e( 'I understand this plugin provides AI access through memory and abilities I control, and I am responsible for configuring appropriate permission levels for my security needs. I assume all responsibility and risk for enabling AI access to my site.', 'abilities-bridge' ); ?>
+			</label>
+
+			<label style="display: block; margin-bottom: 0; cursor: pointer;">
+				<input type="checkbox" id="consent-openai-api-billing" class="api-key-consent-checkbox-openai" value="1">
+				<?php esc_html_e( 'I understand API costs are my responsibility and billed by my AI provider directly. The makers of this plugin are NOT responsible for API usage costs or billing.', 'abilities-bridge' ); ?>
+			</label>
+		</div>
+		<?php
+	}
+
+	/**
+	 * AJAX: Test OpenAI API connection.
+	 */
+	public function ajax_test_openai_connection() {
+		check_ajax_referer( 'abilities_bridge_settings', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Insufficient permissions.', 'abilities-bridge' ) ) );
+		}
+
+		$provider = Abilities_Bridge_AI_Provider::PROVIDER_OPENAI;
+		$model    = Abilities_Bridge_AI_Provider::get_selected_model( $provider );
+
+		if ( ! Abilities_Bridge_AI_Provider::has_api_key( $provider ) ) {
+			wp_send_json_error(
+				array(
+					'code'    => 'no_api_key',
+					'message' => __( 'OpenAI API key is not configured.', 'abilities-bridge' ),
+					'model'   => $model,
+				)
+			);
+		}
+
+		$openai_client = Abilities_Bridge_AI_Provider::create_client( $provider );
+		$result        = $openai_client->send_message(
+			array(
+				array(
+					'role'    => 'user',
+					'content' => 'Return exactly: OK',
+				),
+			),
+			array(),
+			32,
+			$model
+		);
+
+		if ( is_wp_error( $result ) ) {
+			$error_data = $result->get_error_data();
+			wp_send_json_error(
+				array(
+					'code'         => $result->get_error_code(),
+					'message'      => $result->get_error_message(),
+					'model'        => $model,
+					'provider'     => 'openai',
+					'status'       => isset( $error_data['status'] ) ? intval( $error_data['status'] ) : null,
+					'provider_msg' => isset( $error_data['provider_message'] ) ? sanitize_text_field( $error_data['provider_message'] ) : '',
+				)
+			);
+		}
+
+		wp_send_json_success(
+			array(
+				'message' => __( 'OpenAI test succeeded.', 'abilities-bridge' ),
+				'model'   => $model,
+			)
+		);
 	}
 
 	/**
@@ -313,7 +450,7 @@ class Abilities_Bridge_Settings_Page {
 	public function render_prompt_section() {
 		?>
 		<p>
-			<?php esc_html_e( 'Customize the system prompt that defines how Claude behaves and responds. This prompt is sent with every conversation.', 'abilities-bridge' ); ?>
+			<?php esc_html_e( 'Customize the system prompt that defines how the AI behaves and responds. This prompt is sent with every conversation.', 'abilities-bridge' ); ?>
 		</p>
 		<?php
 	}
@@ -337,7 +474,7 @@ class Abilities_Bridge_Settings_Page {
 			rows="20"
 		><?php echo esc_textarea( $system_prompt ); ?></textarea>
 		<p class="description">
-			<?php esc_html_e( 'This prompt defines Claude\'s behavior, available tools, and how it should interact with your WordPress site.', 'abilities-bridge' ); ?>
+			<?php esc_html_e( 'This prompt defines the AI behavior, available tools, and how it should interact with your WordPress site.', 'abilities-bridge' ); ?>
 		</p>
 		<p>
 			<button type="button" class="button" id="abilities-bridge-restore-default-prompt">
@@ -353,7 +490,7 @@ class Abilities_Bridge_Settings_Page {
 	public function render_memory_section() {
 		?>
 		<p>
-			<?php esc_html_e( 'The Memory Tool allows Claude to store persistent notes and knowledge across conversations. Data is stored securely in the WordPress database.', 'abilities-bridge' ); ?>
+			<?php esc_html_e( 'The Memory Tool allows the AI to store persistent notes and knowledge across conversations. Data is stored securely in the WordPress database.', 'abilities-bridge' ); ?>
 		</p>
 		<p style="color: #d63638;">
 			<strong><?php esc_html_e( 'Important:', 'abilities-bridge' ); ?></strong>
@@ -426,7 +563,7 @@ class Abilities_Bridge_Settings_Page {
 		<div class="card">
 			<h2><?php esc_html_e( 'Memory', 'abilities-bridge' ); ?></h2>
 			<p>
-				<?php esc_html_e( 'Enable persistent memory storage for Claude to remember context across conversations.', 'abilities-bridge' ); ?>
+				<?php esc_html_e( 'Enable persistent memory storage for the AI to remember context across conversations.', 'abilities-bridge' ); ?>
 			</p>
 
 			<form method="post" action="options.php">
@@ -547,8 +684,16 @@ class Abilities_Bridge_Settings_Page {
 			set_transient( 'abilities_bridge_new_credentials', $credentials, 60 );
 
 			// Redirect to avoid resubmission (include nonce for credentials-generated flag).
-			$redirect_url = add_query_arg( 'credentials-generated', '1', admin_url( 'admin.php?page=abilities-bridge-settings' ) );
-			$redirect_url = wp_nonce_url( $redirect_url, 'abilities_bridge_settings_nav' );
+			// Note: wp_nonce_url() must NOT be used here — it calls esc_html() which
+			// converts & to &amp;, breaking query parameters in the Location header.
+			$redirect_url = add_query_arg(
+				array(
+					'credentials-generated' => '1',
+					'tab'                   => 'mcp-setup',
+					'_wpnonce'              => wp_create_nonce( 'abilities_bridge_settings_nav' ),
+				),
+				admin_url( 'admin.php?page=abilities-bridge-settings' )
+			);
 			wp_safe_redirect( $redirect_url );
 			exit;
 		}
@@ -802,6 +947,13 @@ class Abilities_Bridge_Settings_Page {
 		// Check system requirements.
 		$requirements = $this->check_requirements();
 
+		// Determine which tab should be active (from URL param, defaults to 'general').
+		$valid_tabs = array( 'general', 'memory', 'mcp-setup', 'about', 'pro', 'learn-more' );
+		$active_tab = isset( $_GET['tab'] ) ? sanitize_text_field( wp_unslash( $_GET['tab'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		if ( ! in_array( $active_tab, $valid_tabs, true ) ) {
+			$active_tab = 'general';
+		}
+
 		?>
 		<div class="wrap">
 			<h1><?php echo esc_html( get_admin_page_title() ); ?></h1>
@@ -810,17 +962,26 @@ class Abilities_Bridge_Settings_Page {
 
 			<!-- Tab Navigation -->
 			<h2 class="nav-tab-wrapper abilities-bridge-settings-tabs">
-				<a href="#general" class="nav-tab nav-tab-active" data-tab="general"><?php esc_html_e( 'General', 'abilities-bridge' ); ?></a>
-				<a href="#memory" class="nav-tab" data-tab="memory"><?php esc_html_e( 'Memory', 'abilities-bridge' ); ?></a>
-				<a href="#mcp-setup" class="nav-tab" data-tab="mcp-setup"><?php esc_html_e( 'MCP Setup', 'abilities-bridge' ); ?></a>
-				<a href="#about" class="nav-tab" data-tab="about"><?php esc_html_e( 'About', 'abilities-bridge' ); ?></a>
-				<a href="#pro" class="nav-tab" data-tab="pro" style="color: #4CAF50; font-weight: 600;">
-					<?php esc_html_e( 'Pro Features', 'abilities-bridge' ); ?>
-				</a>
+				<?php foreach ( $valid_tabs as $tab_id ) : ?>
+					<?php
+					$tab_labels = array(
+						'general'    => __( 'General', 'abilities-bridge' ),
+						'memory'     => __( 'Memory', 'abilities-bridge' ),
+						'mcp-setup'  => __( 'MCP Setup', 'abilities-bridge' ),
+						'about'      => __( 'About', 'abilities-bridge' ),
+						'pro'        => __( 'Pro Features', 'abilities-bridge' ),
+						'learn-more' => __( 'Learn More', 'abilities-bridge' ),
+					);
+					$is_active  = ( $tab_id === $active_tab );
+					$tab_class  = 'nav-tab' . ( $is_active ? ' nav-tab-active' : '' );
+					$tab_style  = ( 'pro' === $tab_id ) ? ' style="color: #4CAF50; font-weight: 600;"' : '';
+					?>
+					<a href="#<?php echo esc_attr( $tab_id ); ?>" class="<?php echo esc_attr( $tab_class ); ?>" data-tab="<?php echo esc_attr( $tab_id ); ?>"<?php echo $tab_style; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>><?php echo esc_html( $tab_labels[ $tab_id ] ); ?></a>
+				<?php endforeach; ?>
 			</h2>
 
 			<!-- General Tab -->
-			<div class="abilities-bridge-tab-content" id="tab-general" style="display: block;">
+			<div class="abilities-bridge-tab-content" id="tab-general" style="display: <?php echo 'general' === $active_tab ? 'block' : 'none'; ?>;"><?php // phpcs:ignore ?>
 				<div class="card">
 				<h2><?php esc_html_e( 'System Requirements', 'abilities-bridge' ); ?></h2>
 				<table class="widefat">
@@ -859,26 +1020,26 @@ class Abilities_Bridge_Settings_Page {
 			</div>
 
 			<!-- Memory Tab -->
-			<div class="abilities-bridge-tab-content" id="tab-memory" style="display: none;">
+			<div class="abilities-bridge-tab-content" id="tab-memory" style="display: <?php echo 'memory' === $active_tab ? 'block' : 'none'; ?>;">
 				<?php $this->render_builtin_tools_section(); ?>
 			</div>
 
 			<!-- MCP Setup Tab -->
-			<div class="abilities-bridge-tab-content" id="tab-mcp-setup" style="display: none;">
+			<div class="abilities-bridge-tab-content" id="tab-mcp-setup" style="display: <?php echo 'mcp-setup' === $active_tab ? 'block' : 'none'; ?>;">
 				<?php $this->render_mcp_section(); ?>
 			</div>
 
 			<!-- About Tab -->
-			<div class="abilities-bridge-tab-content" id="tab-about" style="display: none;">
+			<div class="abilities-bridge-tab-content" id="tab-about" style="display: <?php echo 'about' === $active_tab ? 'block' : 'none'; ?>;">
 
 			<div class="card">
 				<h2><?php esc_html_e( 'About Abilities Bridge', 'abilities-bridge' ); ?></h2>
 				<p><strong><?php esc_html_e( 'Version:', 'abilities-bridge' ); ?></strong> <?php echo esc_html( ABILITIES_BRIDGE_VERSION ); ?></p>
 				<p>
-					<?php esc_html_e( 'Abilities Bridge connects Claude AI to your WordPress site through two interfaces:', 'abilities-bridge' ); ?>
+					<?php esc_html_e( 'Abilities Bridge connects AI to your WordPress site through two interfaces:', 'abilities-bridge' ); ?>
 				</p>
 				<ol style="margin-left: 20px; margin-bottom: 15px;">
-					<li><strong><?php esc_html_e( 'Admin Chat Interface', 'abilities-bridge' ); ?></strong> - <?php esc_html_e( 'Built-in chat interface powered by Claude AI', 'abilities-bridge' ); ?></li>
+					<li><strong><?php esc_html_e( 'Admin Chat Interface', 'abilities-bridge' ); ?></strong> - <?php esc_html_e( 'Built-in chat interface powered by Claude or OpenAI', 'abilities-bridge' ); ?></li>
 					<li><strong><?php esc_html_e( 'MCP Integration', 'abilities-bridge' ); ?></strong> - <?php esc_html_e( 'Connect via MCP (Model Context Protocol) to use with Claude Code, Claude Desktop and other MCP integrations', 'abilities-bridge' ); ?></li>
 				</ol>
 
@@ -908,72 +1069,47 @@ class Abilities_Bridge_Settings_Page {
 			</div>
 
 			<!-- Pro Features Tab -->
-			<div class="abilities-bridge-tab-content" id="tab-pro" style="display: none;">
+			<div class="abilities-bridge-tab-content" id="tab-pro" style="display: <?php echo 'pro' === $active_tab ? 'block' : 'none'; ?>;"><?php // phpcs:ignore ?>
 				<div class="card" style="max-width: 900px;">
 					<!-- Hero Section -->
 					<div style="background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%); color: white; padding: 40px; border-radius: 8px; text-align: center; margin-bottom: 30px;">
 						<h1 style="color: white; margin: 0 0 10px 0; font-size: 36px;">
-							Upgrade to Abilities Bridge Pro
+							<?php esc_html_e( 'Extend Your AI System Admin', 'abilities-bridge' ); ?>
 						</h1>
-						<p style="font-size: 18px; margin: 0 0 20px 0; opacity: 0.95;">
-							<?php esc_html_e( 'Unlock powerful features for teams and advanced workflows', 'abilities-bridge' ); ?>
+						<p style="font-size: 18px; margin: 0; opacity: 0.95;">
+							<?php esc_html_e( 'Professional services and plugins to get more from your AI-powered WordPress site', 'abilities-bridge' ); ?>
 						</p>
-						<a href="https://aisystemadmin.com/upgrade" class="button button-primary button-hero" style="background: white; border: none; color: #2d3748; font-size: 18px; padding: 12px 40px; height: auto; text-shadow: none; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
-							<?php esc_html_e( 'Upgrade to Pro →', 'abilities-bridge' ); ?>
-						</a>
 					</div>
 
 					<!-- Feature Grid (2 Column Layout) -->
 					<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; margin-bottom: 30px; max-width: 800px; margin-left: auto; margin-right: auto;">
 
-						<!-- Feature 1: User Access Control -->
+						<!-- Concierge Service -->
 						<div style="border: 2px solid #e0e0e0; padding: 30px; border-radius: 8px; background: #f9f9f9;">
 							<h3 style="margin: 0 0 15px 0; color: #333; font-size: 22px;">
-								<?php esc_html_e( 'User Access Control', 'abilities-bridge' ); ?>
+								<?php esc_html_e( 'Upgrade to Concierge Service', 'abilities-bridge' ); ?>
 							</h3>
-							<p style="margin: 0 0 15px 0; color: #666; line-height: 1.6; font-size: 15px;">
-								<?php esc_html_e( 'Grant AI access to non-admin users with granular permissions. Perfect for editors and content managers who need AI assistance without full admin access.', 'abilities-bridge' ); ?>
+							<p style="margin: 0 0 20px 0; color: #666; line-height: 1.6; font-size: 15px;">
+								<?php esc_html_e( 'Skip the learning curve entirely. Get Abilities Bridge professionally installed on your test and production sites, connected to Claude and OpenAI, plus consultation and ongoing priority support.', 'abilities-bridge' ); ?>
 							</p>
-							<ul style="margin: 0; padding-left: 20px; color: #666; line-height: 1.8;">
-								<li><?php esc_html_e( 'Per-user tool permissions', 'abilities-bridge' ); ?></li>
-								<li><?php esc_html_e( 'File path restrictions', 'abilities-bridge' ); ?></li>
-								<li><?php esc_html_e( 'Custom rate limits', 'abilities-bridge' ); ?></li>
-								<li><?php esc_html_e( 'Revokable access', 'abilities-bridge' ); ?></li>
-							</ul>
+							<a href="https://aisystemadmin.com/concierge-service/" class="button button-primary" style="font-size: 15px; padding: 8px 24px; height: auto;">
+								<?php esc_html_e( 'Learn More →', 'abilities-bridge' ); ?>
+							</a>
 						</div>
 
-						<!-- Feature 2: Human Support for AI Solutions -->
+						<!-- Site Abilities Plugin -->
 						<div style="border: 2px solid #e0e0e0; padding: 30px; border-radius: 8px; background: #f9f9f9;">
 							<h3 style="margin: 0 0 15px 0; color: #333; font-size: 22px;">
-								<?php esc_html_e( 'Human Support for AI Solutions', 'abilities-bridge' ); ?>
+								<?php esc_html_e( 'Site Abilities Plugin', 'abilities-bridge' ); ?>
 							</h3>
-							<p style="margin: 0 0 15px 0; color: #666; line-height: 1.6; font-size: 15px;">
-								<?php esc_html_e( 'Get expert help from real humans who understand both WordPress and AI. Complete support package combining technical assistance with strategic AI consulting.', 'abilities-bridge' ); ?>
+							<p style="margin: 0 0 20px 0; color: #666; line-height: 1.6; font-size: 15px;">
+								<?php esc_html_e( 'Create and register custom AI abilities for your WordPress site.', 'abilities-bridge' ); ?>
 							</p>
-							<ul style="margin: 0; padding-left: 20px; color: #666; line-height: 1.8;">
-								<li><?php esc_html_e( 'Direct developer support', 'abilities-bridge' ); ?></li>
-								<li><?php esc_html_e( 'AI strategy consulting', 'abilities-bridge' ); ?></li>
-								<li><?php esc_html_e( 'Implementation guidance', 'abilities-bridge' ); ?></li>
-								<li><?php esc_html_e( 'WordPress + AI integration help', 'abilities-bridge' ); ?></li>
-							</ul>
+							<a href="https://aisystemadmin.com/site-abilities/" class="button button-primary" style="font-size: 15px; padding: 8px 24px; height: auto;">
+								<?php esc_html_e( 'Learn More →', 'abilities-bridge' ); ?>
+							</a>
 						</div>
 
-					</div>
-
-					<!-- Pricing / CTA Section -->
-					<div style="text-align: center; padding: 30px; background: #fafafa; border-radius: 8px;">
-						<h2 style="margin: 0 0 15px 0;">
-							<?php esc_html_e( 'Ready to Upgrade?', 'abilities-bridge' ); ?>
-						</h2>
-						<p style="font-size: 16px; color: #666; margin: 0 0 25px 0;">
-							<?php esc_html_e( 'Unlock all Pro features and take your WordPress AI integration to the next level.', 'abilities-bridge' ); ?>
-						</p>
-						<a href="https://aisystemadmin.com/upgrade" class="button button-primary button-hero" style="font-size: 18px; padding: 12px 40px; height: auto;">
-							<?php esc_html_e( 'View Pro Plans & Pricing →', 'abilities-bridge' ); ?>
-						</a>
-						<p style="margin: 20px 0 0 0; color: #999; font-size: 14px;">
-							<?php esc_html_e( '30-day money-back guarantee • No contracts • Cancel anytime', 'abilities-bridge' ); ?>
-						</p>
 					</div>
 
 					<!-- Have Questions Section -->
@@ -991,6 +1127,35 @@ class Abilities_Bridge_Settings_Page {
 						</p>
 					</div>
 
+				</div>
+			</div>
+
+			<!-- Learn More Tab -->
+			<div class="abilities-bridge-tab-content" id="tab-learn-more" style="display: <?php echo 'learn-more' === $active_tab ? 'block' : 'none'; ?>;">
+				<div class="card" style="max-width: 900px;">
+					<h2><?php esc_html_e( 'Getting Started with Abilities Bridge', 'abilities-bridge' ); ?></h2>
+					<p style="font-size: 15px; line-height: 1.6; color: #555;">
+						<?php esc_html_e( 'Abilities Bridge gives your WordPress site a direct line to AI. Watch the overview below to see how it all comes together, from connecting your API keys to managing abilities and permissions.', 'abilities-bridge' ); ?>
+					</p>
+
+					<div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; margin: 25px 0; border-radius: 8px; border: 1px solid #ddd;">
+						<iframe
+							src="https://www.youtube.com/embed/2jbozwr5quE"
+							style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;"
+							allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+							allowfullscreen
+							title="<?php esc_attr_e( 'Abilities Bridge Overview', 'abilities-bridge' ); ?>"
+						></iframe>
+					</div>
+
+					<p style="font-size: 15px; line-height: 1.6; color: #555;">
+						<?php esc_html_e( 'For guides, documentation, and more resources, visit our website.', 'abilities-bridge' ); ?>
+					</p>
+					<p>
+						<a href="https://aisystemadmin.com" target="_blank" class="button button-primary" style="font-size: 15px; padding: 8px 24px; height: auto;">
+							<?php esc_html_e( 'Visit aisystemadmin.com', 'abilities-bridge' ); ?>
+						</a>
+					</p>
 				</div>
 			</div>
 		</div>

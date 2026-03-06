@@ -25,7 +25,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 		<div class="abilities-bridge-welcome-message">
 			<div class="abilities-bridge-message abilities-bridge-message-assistant">
 				<div class="abilities-bridge-message-content">
-					<p><?php esc_html_e( 'Hi, I\'m Claude. How can I help you today?', 'abilities-bridge' ); ?></p>
+					<p><?php esc_html_e( 'Hi, I\'m your AI assistant. How can I help you today?', 'abilities-bridge' ); ?></p>
 				</div>
 			</div>
 		</div>
@@ -33,7 +33,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 	<div class="abilities-bridge-chat-loading" id="abilities-bridge-chat-loading" style="display: none;">
 		<div class="abilities-bridge-loading-spinner"></div>
-		<span><?php esc_html_e( 'Claude is thinking...', 'abilities-bridge' ); ?></span>
+		<span><?php esc_html_e( 'AI is thinking...', 'abilities-bridge' ); ?></span>
 	</div>
 
 	<div class="abilities-bridge-activity-history" id="abilities-bridge-activity-history" style="display: none;">

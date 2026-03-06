@@ -79,14 +79,14 @@ class Abilities_Bridge_Ability_Permissions_Admin {
 			'abilities-bridge-permissions',
 			ABILITIES_BRIDGE_PLUGIN_URL . 'admin/css/ability-permissions.css',
 			array(),
-			ABILITIES_BRIDGE_VERSION
+			filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/css/ability-permissions.css' )
 		);
 
 		wp_enqueue_script(
 			'abilities-bridge-permissions',
 			ABILITIES_BRIDGE_PLUGIN_URL . 'admin/js/ability-permissions.js',
 			array( 'jquery' ),
-			ABILITIES_BRIDGE_VERSION,
+			filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/js/ability-permissions.js' ),
 			true
 		);
 
@@ -95,6 +95,8 @@ class Abilities_Bridge_Ability_Permissions_Admin {
 			'abilitiesBridgeAbilities',
 			array(
 				'abilitiesConsentGiven' => (bool) get_option( 'abilities_bridge_abilities_api_consent', false ),
+				'abilitiesApiAvailable' => function_exists( 'wp_get_ability' ),
+				'availableAbilities'    => Abilities_Bridge_Ability_Permissions::get_registered_ability_names(),
 			)
 		);
 	}
@@ -559,7 +561,7 @@ class Abilities_Bridge_Ability_Permissions_Admin {
 				if ( $editing && $edit_data ) {
 					echo esc_html__( 'Edit Ability: ', 'abilities-bridge' ) . esc_html( $edit_data['ability_name'] );
 				} else {
-					esc_html_e( 'Authorize Ability for Claude', 'abilities-bridge' );
+					esc_html_e( 'Authorize Ability', 'abilities-bridge' );
 				}
 				?>
 			</h2>
@@ -604,16 +606,24 @@ class Abilities_Bridge_Ability_Permissions_Admin {
 									placeholder="e.g., core/create-post"
 									value="<?php echo $editing && $edit_data ? esc_attr( $edit_data['ability_name'] ) : ''; ?>"
 									<?php echo $editing ? 'readonly' : ''; ?>
+									list="<?php echo ! $editing ? 'abilities-bridge-abilities-list' : ''; ?>"
 									required>
 							<p class="description">
 								<?php
 								if ( $editing ) {
 									esc_html_e( 'Ability name cannot be changed when editing.', 'abilities-bridge' );
 								} else {
-									esc_html_e( 'Must match the registered WordPress ability name exactly.', 'abilities-bridge' );
+									esc_html_e( 'Must match the registered WordPress ability name exactly. Suggestions are shown when available.', 'abilities-bridge' );
 								}
 								?>
 							</p>
+							<?php if ( ! $editing ) : ?>
+								<datalist id="abilities-bridge-abilities-list">
+									<?php foreach ( Abilities_Bridge_Ability_Permissions::get_registered_ability_names() as $ability_name ) : ?>
+										<option value="<?php echo esc_attr( $ability_name ); ?>"></option>
+									<?php endforeach; ?>
+								</datalist>
+							<?php endif; ?>
 						</td>
 					</tr>
 
@@ -694,21 +704,20 @@ class Abilities_Bridge_Ability_Permissions_Admin {
 										rows="4"
 										class="large-text"
 										required
-										placeholder="What does this ability do?"><?php echo $editing && $edit_data ? esc_textarea( $edit_data['description'] ) : ''; ?></textarea>
+										placeholder="This description is sent to the AI so it knows what this ability does and when to use it."><?php echo $editing && $edit_data ? esc_textarea( $edit_data['description'] ) : ''; ?></textarea>
 						</td>
 					</tr>
 
 					<tr>
 						<th scope="row">
-							<label for="reason_for_approval"><?php esc_html_e( 'Reason for Approval', 'abilities-bridge' ); ?> *</label>
+							<label for="reason_for_approval"><?php esc_html_e( 'Reason for Approval', 'abilities-bridge' ); ?></label>
 						</th>
 						<td>
 							<textarea id="reason_for_approval"
 										name="reason_for_approval"
 										rows="4"
 										class="large-text"
-										required
-										placeholder="Why are you approving this ability for Claude to execute?"><?php echo $editing && $edit_data ? esc_textarea( $edit_data['reason_for_approval'] ) : ''; ?></textarea>
+										placeholder="Optional. For your own records only — not sent to the AI."><?php echo $editing && $edit_data ? esc_textarea( $edit_data['reason_for_approval'] ) : ''; ?></textarea>
 						</td>
 					</tr>
 

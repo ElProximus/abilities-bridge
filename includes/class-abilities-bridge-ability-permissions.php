@@ -33,6 +33,42 @@ class Abilities_Bridge_Ability_Permissions {
 	private static $permissions_cache = null;
 
 	/**
+	 * Get registered ability names from WordPress.
+	 *
+	 * @return array
+	 */
+	public static function get_registered_ability_names() {
+		if ( ! function_exists( 'wp_get_abilities' ) ) {
+			return array();
+		}
+
+		$abilities = wp_get_abilities();
+		if ( is_array( $abilities ) ) {
+			return array_keys( $abilities );
+		}
+
+		if ( $abilities instanceof Traversable ) {
+			$names = array();
+			foreach ( $abilities as $ability_name => $ability_obj ) {
+				$names[] = $ability_name;
+			}
+			return $names;
+		}
+
+		return array();
+	}
+
+	/**
+	 * Check if ability is registered in WordPress.
+	 *
+	 * @param string $ability_name Ability name.
+	 * @return bool
+	 */
+	public static function ability_exists( $ability_name ) {
+		return function_exists( 'wp_get_ability' ) && wp_get_ability( $ability_name );
+	}
+
+	/**
 	 * PRIMARY GATE: Check if ability can execute
 	 *
 	 * FAIL CLOSED: Returns permission object, caller must check 'allowed' key
@@ -172,6 +208,15 @@ class Abilities_Bridge_Ability_Permissions {
 			return new WP_Error( 'insufficient_permissions', 'Only site administrators can register abilities.' );
 		}
 
+		// ====== VALIDATION: Ability must exist ======
+		if ( ! function_exists( 'wp_get_ability' ) ) {
+			return new WP_Error( 'abilities_api_missing', 'WordPress Abilities API is not available.' );
+		}
+
+		if ( ! self::ability_exists( $ability_name ) ) {
+			return new WP_Error( 'ability_not_registered', 'Ability not found in WordPress. Make sure it is registered with wp_register_ability().' );
+		}
+
 		// ====== VALIDATION: Required fields ======
 		$required_fields = array(
 			'enabled',
@@ -201,10 +246,10 @@ class Abilities_Bridge_Ability_Permissions {
 
 		// ====== VALIDATION: Rate limits ======
 		$max_per_day = (int) $config['max_per_day'];
-		if ( $max_per_day < 0 || $max_per_day > 100 ) {
+		if ( $max_per_day < 0 || $max_per_day > 10000 ) {
 			return new WP_Error(
 				'invalid_rate_limit',
-				'Rate limit must be 0-100'
+				'Rate limit must be 0-10000'
 			);
 		}
 

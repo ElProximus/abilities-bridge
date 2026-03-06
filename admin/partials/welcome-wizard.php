@@ -87,7 +87,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 				<li><?php esc_html_e( 'You are responsible for configuring tool and ability permissions appropriately', 'abilities-bridge' ); ?></li>
 				<li><?php esc_html_e( 'You are responsible for reviewing AI activity logs and access patterns', 'abilities-bridge' ); ?></li>
 				<li><?php esc_html_e( 'You acknowledge the inherent risks of providing AI access to your data', 'abilities-bridge' ); ?></li>
-				<li><?php esc_html_e( 'You are responsible for protecting your Anthropic API key', 'abilities-bridge' ); ?></li>
+				<li><?php esc_html_e( 'You are responsible for protecting your AI provider API key', 'abilities-bridge' ); ?></li>
 			</ul>
 		</div>
 
@@ -95,13 +95,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 		<div class="wizard-section">
 			<h2><?php esc_html_e( 'API and Subscription Costs & Billing', 'abilities-bridge' ); ?></h2>
 			<ul>
-				<li><?php esc_html_e( 'This plugin requires an Anthropic API key, Claude Account (Free or Pro), or compatible service to function', 'abilities-bridge' ); ?></li>
-				<li><?php esc_html_e( 'API and subscription usage may incur costs charged by Anthropic (not by this plugin)', 'abilities-bridge' ); ?></li>
+				<li><?php esc_html_e( 'This plugin requires an Anthropic or OpenAI API key for the admin chat interface, or a Claude account (Free or Pro) for MCP integration', 'abilities-bridge' ); ?></li>
+				<li><?php esc_html_e( 'API and subscription usage may incur costs charged by your AI provider (not by this plugin)', 'abilities-bridge' ); ?></li>
 				<li><?php esc_html_e( 'You are solely responsible for API and subscription usage and associated billing charges', 'abilities-bridge' ); ?></li>
-				<li>
-					<?php esc_html_e( 'For billing issues, questions, or disputes, contact Anthropic directly at:', 'abilities-bridge' ); ?>
-					<a href="https://console.anthropic.com/" target="_blank" rel="noopener">https://console.anthropic.com/</a>
-				</li>
+				<li><?php esc_html_e( 'For billing issues, questions, or disputes, contact your AI provider directly', 'abilities-bridge' ); ?></li>
 				<li><?php esc_html_e( 'The makers of this plugin are NOT responsible for your API and subscription usage costs or billing', 'abilities-bridge' ); ?></li>
 			</ul>
 
@@ -145,7 +142,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 				<div class="consent-checkbox-item">
 					<input type="checkbox" name="consent_billing" id="consent_billing" value="1" required>
 					<label for="consent_billing">
-						<?php esc_html_e( 'I understand API costs and Claude Account subscription costs are my responsibility and billed by Anthropic directly. The makers of this plugin are NOT responsible for API usage costs, Claude Account subscription fees, or billing.', 'abilities-bridge' ); ?>
+						<?php esc_html_e( 'I understand API and subscription costs are my responsibility and billed by my AI provider directly. The makers of this plugin are NOT responsible for API usage costs or billing.', 'abilities-bridge' ); ?>
 					</label>
 				</div>
 

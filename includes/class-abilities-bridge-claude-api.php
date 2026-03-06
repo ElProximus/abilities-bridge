@@ -46,10 +46,20 @@ class Abilities_Bridge_Claude_API {
 	 */
 	public static function get_available_models() {
 		return array(
+			'claude-opus-4-6'            => 'Opus 4.6 (Most Intelligent)',
 			'claude-opus-4-5-20251101'   => 'Opus 4.5 (Most Intelligent)',
 			'claude-sonnet-4-5-20250929' => 'Sonnet 4.5 (Balanced)',
-			'claude-haiku-4-5'           => 'Haiku 4.5 (Fastest & Cheapest)',
+			'claude-haiku-4-5-20251001'  => 'Haiku 4.5 (Fastest & Cheapest)',
 		);
+	}
+
+	/**
+	 * Get default Claude model
+	 *
+	 * @return string
+	 */
+	public static function get_default_model() {
+		return 'claude-sonnet-4-5-20250929';
 	}
 
 	/**
@@ -61,9 +71,9 @@ class Abilities_Bridge_Claude_API {
 		$user_id = get_current_user_id();
 		$model   = get_user_meta( $user_id, 'abilities_bridge_selected_model', true );
 
-		// Default to Sonnet 4.5 if no preference set.
+		// Default to Sonnet 4.5 if no preference set (latest balanced model).
 		if ( empty( $model ) ) {
-			$model = 'claude-sonnet-4-5-20250929';
+			$model = self::get_default_model();
 		}
 
 		return $model;
@@ -95,9 +105,9 @@ class Abilities_Bridge_Claude_API {
 	public static function get_default_system_prompt() {
 		return '# Abilities Bridge System Prompt
 
-You are Claude, operating within WordPress via the Abilities Bridge plugin through two interfaces:
+You are an AI assistant, operating within WordPress via the Abilities Bridge plugin through two interfaces:
 1. Admin Chat Interface - Built-in WordPress admin interface
-2. MCP Integration - Connected via Model Context Protocol (Claude Desktop, Claude Code, etc.)
+2. MCP Integration - Connected via Model Context Protocol (AI clients such as Claude Desktop, Claude Code, etc.)
 
 ## Your Role
 

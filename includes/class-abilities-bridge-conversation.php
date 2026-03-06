@@ -70,12 +70,13 @@ class Abilities_Bridge_Conversation {
 	 * @return int|false Conversation ID or false on failure
 	 */
 	public function create( $title = 'New Conversation', $model = null ) {
+		$provider = Abilities_Bridge_AI_Provider::get_current_provider();
 		// Use user's selected model if not specified.
 		if ( empty( $model ) ) {
-			$model = Abilities_Bridge_Claude_API::get_selected_model();
+			$model = Abilities_Bridge_AI_Provider::get_selected_model( $provider );
 		}
 
-		$this->conversation_id = Abilities_Bridge_Database::create_conversation( $this->user_id, $title, $model );
+		$this->conversation_id = Abilities_Bridge_Database::create_conversation( $this->user_id, $title, $model, $provider );
 		return $this->conversation_id;
 	}
 
@@ -229,21 +230,34 @@ class Abilities_Bridge_Conversation {
 	 * @return array Token usage statistics
 	 */
 	public function calculate_token_usage() {
-		$tools = Abilities_Bridge_Claude_API::get_tool_definitions();
+		$tools = Abilities_Bridge_AI_Provider::get_tool_definitions();
+		$provider = Abilities_Bridge_AI_Provider::get_current_provider();
 
 		// Get model from conversation or use current setting.
 		$model = null;
 		if ( $this->conversation_id ) {
 			$conversation = Abilities_Bridge_Database::get_conversation( $this->conversation_id );
-			if ( $conversation && isset( $conversation->model ) ) {
-				$model = $conversation->model;
+			if ( $conversation ) {
+				if ( ! empty( $conversation->provider ) ) {
+					$provider = $conversation->provider;
+				} elseif ( ! empty( $conversation->model ) ) {
+					$provider = Abilities_Bridge_AI_Provider::infer_provider_from_model( $conversation->model, $provider );
+				}
+
+				if ( isset( $conversation->model ) ) {
+					$available_models = Abilities_Bridge_AI_Provider::get_available_models( $provider );
+					if ( isset( $available_models[ $conversation->model ] ) ) {
+						$model = $conversation->model;
+					}
+				}
 			}
 		}
 
 		return Abilities_Bridge_Token_Calculator::calculate_token_usage(
 			$this->get_messages_for_api(),
 			$tools,
-			$model
+			$model,
+			$provider
 		);
 	}
 

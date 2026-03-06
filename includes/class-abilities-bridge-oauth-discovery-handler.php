@@ -4,7 +4,7 @@
  * Handles OAuth and MCP discovery endpoints
  *
  * @package Abilities_Bridge
- * @since 1.2.0
+ * @since 1.0.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -102,7 +102,7 @@ class Abilities_Bridge_OAuth_Discovery_Handler {
 
 		$discovery = array(
 			'name'          => 'Abilities Bridge',
-			'version'       => '1.0.0',
+			'version'       => ABILITIES_BRIDGE_VERSION,
 			'description'   => 'WordPress MCP Server for Claude Desktop',
 			'vendor'        => get_bloginfo( 'name' ),
 			'capabilities'  => array(

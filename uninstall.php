@@ -50,6 +50,8 @@ function abilities_bridge_validate_table_name( $table_name ) {
 
 // Delete plugin options.
 delete_option( 'abilities_bridge_api_key' );
+delete_option( 'abilities_bridge_openai_api_key' );
+delete_option( 'abilities_bridge_ai_provider' );
 delete_option( 'abilities_bridge_system_prompt' );
 delete_option( 'abilities_bridge_cache_stats' );
 delete_option( 'abilities_bridge_enable_memory' );
@@ -69,6 +71,9 @@ delete_option( 'abilities_bridge_enable_abilities_api' );
 
 // Delete user meta for model preferences.
 delete_metadata( 'user', 0, 'abilities_bridge_selected_model', '', true );
+delete_metadata( 'user', 0, 'abilities_bridge_selected_model_anthropic', '', true );
+delete_metadata( 'user', 0, 'abilities_bridge_selected_model_openai', '', true );
+delete_metadata( 'user', 0, 'abilities_bridge_selected_provider', '', true );
 
 // Drop database tables with validation.
 $abilities_bridge_tables = array(

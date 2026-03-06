@@ -75,7 +75,7 @@
 
 		// Confirm dangerous actions
 		$('.button-disable').on('click', function(e) {
-			if (!confirm('Are you sure you want to disable this ability? Claude will no longer be able to execute it.')) {
+			if (!confirm('Are you sure you want to disable this ability? The AI will no longer be able to execute it.')) {
 				e.preventDefault();
 			}
 		});
@@ -101,13 +101,20 @@
 			var abilityName = $form.find('#ability_name').val().trim();
 			var maxPerDay = parseInt($form.find('#max_per_day').val());
 			var description = $form.find('#description').val().trim();
-			var reasonForApproval = $form.find('#reason_for_approval').val().trim();
 
 			var errors = [];
+			var availableAbilities = (window.abilitiesBridgeAbilities && window.abilitiesBridgeAbilities.availableAbilities) ? window.abilitiesBridgeAbilities.availableAbilities : [];
+			var abilitiesApiAvailable = window.abilitiesBridgeAbilities && window.abilitiesBridgeAbilities.abilitiesApiAvailable;
 
 			// Validate ability name format
 			if (!abilityName.match(/^[a-z0-9\-]+\/[a-z0-9\-]+$/)) {
 				errors.push('Ability name must be in format "category/name" (e.g., "core/create-post")');
+			}
+
+			if (abilitiesApiAvailable && Array.isArray(availableAbilities) && availableAbilities.length > 0) {
+				if (availableAbilities.indexOf(abilityName) === -1) {
+					errors.push('Ability name not found in WordPress. Select a registered ability or check the spelling.');
+				}
 			}
 
 			// Validate rate limits
@@ -120,9 +127,6 @@
 				errors.push('Description must be at least 10 characters');
 			}
 
-			if (reasonForApproval.length < 20) {
-				errors.push('Reason for approval must be at least 20 characters (explain why you\'re approving this)');
-			}
 
 			if (errors.length > 0) {
 				e.preventDefault();
