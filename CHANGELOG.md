@@ -7,10 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.1.0] - 2026-03-04
 
+### Added
+- OpenAI as an alternative AI provider
+- Learn More settings tab with overview video and resources
+
 ### Changed
 - Updated Pro Features tab with Concierge Service and Site Abilities Plugin
-- Added OpenAI references throughout documentation and user-facing text
 - Updated About tab to reflect multi-provider support
+- Streamlined WordPress.org readme
 
 ## [1.0.0] - 2025-12-11
 
