@@ -5,6 +5,16 @@ All notable changes to Abilities Bridge will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-03-06
+
+### Added
+- GPT-5.4 model support
+- Token configurations for GPT-5.4 models (1.05M input / 128K output)
+
+### Changed
+- Default OpenAI model updated from GPT-5.2 to GPT-5.4
+- Older OpenAI models marked as Legacy
+
 ## [1.1.0] - 2026-03-04
 
 ### Added
@@ -45,5 +55,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Test suite documentation in tests/README.md
 - WordPress Coding Standards compliance
 
+[1.1.1]: https://aisystemadmin.com/abilities-bridge/releases/v1.1.1/
 [1.1.0]: https://aisystemadmin.com/abilities-bridge/releases/v1.1.0/
 [1.0.0]: https://aisystemadmin.com/abilities-bridge/releases/v1.0.0/

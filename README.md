@@ -16,7 +16,7 @@ Abilities Bridge provides two interfaces for connecting AI to your WordPress sit
 - **Memory Tool** - AI can maintain persistent notes in database-backed storage
 - **Abilities Execution** - Run authorized WordPress Abilities with permission controls
 - **Conversation Management** - Save, resume, and manage multiple conversations
-- **AI Models** - Claude Opus 4.6, Sonnet 4.5, Haiku 4.5 (Anthropic) and GPT-5.2, GPT-5.1, GPT-5 (OpenAI)
+- **AI Models** - Claude Opus 4.6, Sonnet 4.5, Haiku 4.5 (Anthropic) and GPT-5.4, GPT-5.2, GPT-5.1, GPT-5 (OpenAI)
 - **OAuth 2.0** - Secure authentication for MCP connections
 
 ## Memory

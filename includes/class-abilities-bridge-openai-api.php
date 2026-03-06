@@ -44,9 +44,10 @@ class Abilities_Bridge_OpenAI_API {
 	 */
 	public static function get_available_models() {
 		return array(
-			'gpt-5.2-chat-latest' => 'GPT-5.2 Chat (Latest)',
-			'gpt-5-chat-latest' => 'GPT-5 Chat (Latest)',
-			'gpt-5.1-chat-latest' => 'GPT-5.1 Chat (Latest)',
+			'gpt-5.4'             => 'GPT-5.4',
+			'gpt-5.2-chat-latest' => 'GPT-5.2 Chat (Legacy)',
+			'gpt-5-chat-latest'   => 'GPT-5 Chat (Legacy)',
+			'gpt-5.1-chat-latest' => 'GPT-5.1 Chat (Legacy)',
 		);
 	}
 
@@ -56,7 +57,7 @@ class Abilities_Bridge_OpenAI_API {
 	 * @return string
 	 */
 	public static function get_default_model() {
-		return 'gpt-5.2-chat-latest';
+		return 'gpt-5.4';
 	}
 
 	/**
