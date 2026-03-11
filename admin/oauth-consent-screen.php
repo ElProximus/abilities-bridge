@@ -38,15 +38,22 @@ $abilities_bridge_client     = isset( $abilities_bridge_oauth_data['clients'][ $
 
 // Default app name if client not found.
 $abilities_bridge_app_name = 'Unknown Application';
-if ( $abilities_bridge_client && isset( $abilities_bridge_client['name'] ) ) {
-	$abilities_bridge_app_name = $abilities_bridge_client['name'];
+$abilities_bridge_profile  = Abilities_Bridge_OAuth_Client_Manager::PROFILE_ANTHROPIC;
+if ( $abilities_bridge_client ) {
+	if ( isset( $abilities_bridge_client['name'] ) ) {
+		$abilities_bridge_app_name = $abilities_bridge_client['name'];
+	}
+	if ( isset( $abilities_bridge_client['profile'] ) ) {
+		$abilities_bridge_profile = Abilities_Bridge_OAuth_Client_Manager::normalize_profile( $abilities_bridge_client['profile'] );
+	}
 } else {
-	// Try to extract from redirect_uri for Claude Desktop.
 	$abilities_bridge_parsed_uri = wp_parse_url( $redirect_uri );
 	if ( isset( $abilities_bridge_parsed_uri['host'] ) && strpos( $abilities_bridge_parsed_uri['host'], 'claude.ai' ) !== false ) {
 		$abilities_bridge_app_name = 'Claude Desktop';
 	}
 }
+
+$abilities_bridge_site_label = self_admin_url() ? home_url( '/' ) : home_url( '/' );
 
 // Parse requested scopes.
 $abilities_bridge_requested_scopes = ! empty( $scope ) ? explode( ' ', $scope ) : array( 'mcp' );
@@ -75,7 +82,7 @@ $abilities_bridge_requested_scopes = ! empty( $scope ) ? explode( ' ', $scope ) 
 					<?php
 					printf(
 						/* translators: %s: application name */
-						esc_html__( '%s is requesting access to your WordPress site', 'abilities-bridge' ),
+						esc_html__( '%s is requesting access to your WordPress site via Abilities Bridge', 'abilities-bridge' ),
 						'<strong>' . esc_html( $abilities_bridge_app_name ) . '</strong>'
 					);
 					?>
@@ -83,17 +90,19 @@ $abilities_bridge_requested_scopes = ! empty( $scope ) ? explode( ' ', $scope ) 
 			</div>
 
 			<div class="permissions-section">
+				<p><strong><?php esc_html_e( 'Provider Profile:', 'abilities-bridge' ); ?></strong> <?php echo esc_html( Abilities_Bridge_OAuth_Client_Manager::get_profile_label( $abilities_bridge_profile ) ); ?></p>
+				<p><strong><?php esc_html_e( 'Default Site:', 'abilities-bridge' ); ?></strong> <?php echo esc_html( home_url( '/' ) ); ?></p>
 				<h2><?php esc_html_e( 'This application will be able to:', 'abilities-bridge' ); ?></h2>
 				<ul class="permission-list">
 					<li class="permission-item">
-						<div class="permission-icon">✓</div>
+						<div class="permission-icon">[OK]</div>
 						<div class="permission-text">
 							<div class="permission-title"><?php esc_html_e( 'Store Context Data', 'abilities-bridge' ); ?></div>
 							<div class="permission-description"><?php esc_html_e( 'Create and manage memory entries in the database for maintaining conversation context', 'abilities-bridge' ); ?></div>
 						</div>
 					</li>
 					<li class="permission-item">
-						<div class="permission-icon">✓</div>
+						<div class="permission-icon">[OK]</div>
 						<div class="permission-text">
 							<div class="permission-title"><?php esc_html_e( 'Execute WordPress Abilities', 'abilities-bridge' ); ?></div>
 							<div class="permission-description"><?php esc_html_e( 'Run authorized WordPress Abilities API functions registered by plugins', 'abilities-bridge' ); ?></div>
@@ -104,7 +113,7 @@ $abilities_bridge_requested_scopes = ! empty( $scope ) ? explode( ' ', $scope ) 
 
 			<div class="security-notice">
 				<div class="security-notice-title"><?php esc_html_e( 'Security Information', 'abilities-bridge' ); ?></div>
-				<p><?php esc_html_e( 'This application uses OAuth 2.0 with PKCE for secure authentication. Your WordPress admin credentials will not be shared with the application. You can revoke access at any time from your WordPress admin panel.', 'abilities-bridge' ); ?></p>
+				<p><?php esc_html_e( 'This application uses OAuth 2.0 with PKCE for secure authentication. Your WordPress admin credentials will not be shared with the application. You can revoke access at any time from your WordPress admin panel, and each MCP client is scoped to its configured provider profile.', 'abilities-bridge' ); ?></p>
 			</div>
 
 			<form method="post" action="<?php echo esc_url( rest_url( 'abilities-bridge-mcp/v1/authorize' ) ); ?>">
@@ -158,3 +167,4 @@ $abilities_bridge_requested_scopes = ! empty( $scope ) ? explode( ' ', $scope ) 
 	</div>
 </body>
 </html>
+

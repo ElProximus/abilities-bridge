@@ -110,26 +110,35 @@ class Abilities_Bridge_OAuth_Router {
 	 */
 	public static function register_oauth_routes() {
 		// OAuth Discovery - RFC 8414 Authorization Server Metadata.
-		// Registered under proper namespace for fallback REST API access.
 		register_rest_route(
 			'abilities-bridge-mcp/v1',
 			'/.well-known/oauth-authorization-server',
 			array(
 				'methods'             => 'GET',
 				'callback'            => array( 'Abilities_Bridge_OAuth_Discovery_Handler', 'handle_metadata_request' ),
-				'permission_callback' => '__return_true', // Public endpoint.
+				'permission_callback' => '__return_true',
 			)
 		);
 
-		// MCP Discovery - Claude Desktop Remote MCP Server Discovery.
-		// Registered under proper namespace for fallback REST API access.
+		// OAuth Protected Resource Metadata.
+		register_rest_route(
+			'abilities-bridge-mcp/v1',
+			'/.well-known/oauth-protected-resource',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( 'Abilities_Bridge_OAuth_Discovery_Handler', 'handle_protected_resource_request' ),
+				'permission_callback' => '__return_true',
+			)
+		);
+
+		// MCP discovery metadata.
 		register_rest_route(
 			'abilities-bridge-mcp/v1',
 			'/.well-known/mcp',
 			array(
 				'methods'             => 'GET',
 				'callback'            => array( 'Abilities_Bridge_OAuth_Discovery_Handler', 'handle_mcp_discovery' ),
-				'permission_callback' => '__return_true', // Public endpoint.
+				'permission_callback' => '__return_true',
 			)
 		);
 
@@ -189,3 +198,4 @@ class Abilities_Bridge_OAuth_Router {
 		);
 	}
 }
+

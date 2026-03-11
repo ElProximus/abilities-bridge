@@ -3,7 +3,7 @@
  * MCP Server Implementation - PHP-based Model Context Protocol Server.
  *
  * Implements the MCP protocol with Streamable HTTP transport for remote connector support.
- * This allows Claude Desktop to connect to WordPress via Settings → Connectors GUI.
+ * This allows Claude Desktop to connect to WordPress via Settings â†’ Connectors GUI.
  *
  * @package Abilities_Bridge
  * @since 1.0.0
@@ -125,12 +125,75 @@ class Abilities_Bridge_MCP_Server {
 					'oauth' => array(
 						'authorizationEndpoint' => $base_url . '/authorize',
 						'tokenEndpoint'         => $base_url . '/oauth/token',
-						'grantTypes'            => array( 'authorization_code', 'client_credentials', 'refresh_token' ),
+						'grantTypes'            => array( 'authorization_code', 'refresh_token' ),
 						'pkceRequired'          => true,
 					),
 				),
 			),
 		);
+	}
+
+	/**
+	 * Get the authenticated MCP user ID from the current request context.
+	 *
+	 * @return int
+	 */
+	private function get_authenticated_user_id() {
+		if ( isset( $GLOBALS['abilities_bridge_oauth_user_id'] ) ) {
+			return (int) $GLOBALS['abilities_bridge_oauth_user_id'];
+		}
+
+		return get_current_user_id();
+	}
+
+	/**
+	 * Run a callback with the authenticated WordPress user temporarily set.
+	 *
+	 * @param callable $callback Callback to run.
+	 * @return mixed
+	 */
+	private function with_authenticated_user( $callback ) {
+		$restore_user = get_current_user_id();
+		$user_id      = $this->get_authenticated_user_id();
+
+		if ( $user_id ) {
+			wp_set_current_user( $user_id );
+		}
+
+		try {
+			return call_user_func( $callback );
+		} finally {
+			wp_set_current_user( $restore_user );
+		}
+	}
+
+	/**
+	 * Check whether the current MCP request can see a tool.
+	 *
+	 * @param string      $tool_name     Tool name.
+	 * @param string|null $ability_name  Optional ability name.
+	 * @return bool
+	 */
+	private function can_current_request_access_tool( $tool_name, $ability_name = null ) {
+		if ( isset( $GLOBALS['abilities_bridge_oauth_scope'] ) && ! Abilities_Bridge_OAuth_Scopes::can_access_tool( $GLOBALS['abilities_bridge_oauth_scope'], $tool_name ) ) {
+			return false;
+		}
+
+		if ( null !== $ability_name ) {
+			if ( ! class_exists( 'Abilities_Bridge_Ability_Permissions' ) ) {
+				return false;
+			}
+
+			$permission = $this->with_authenticated_user(
+				function () use ( $ability_name ) {
+					return Abilities_Bridge_Ability_Permissions::can_access_ability( $ability_name );
+				}
+			);
+
+			return ! empty( $permission['allowed'] );
+		}
+
+		return true;
 	}
 
 	/**
@@ -144,10 +207,11 @@ class Abilities_Bridge_MCP_Server {
 
 		// Add memory tool if enabled.
 		$memory_enabled = get_option( 'abilities_bridge_enable_memory', false );
-		if ( $memory_enabled ) {
+		$memory_consent = get_option( 'abilities_bridge_memory_consent', false );
+		if ( $memory_enabled && $memory_consent && $this->can_current_request_access_tool( 'memory' ) ) {
 			$tools[] = array(
 				'name'        => 'memory',
-				'description' => 'Persistent storage system for maintaining context and notes across conversations. Can create, read, update, and delete memory entries in the database.',
+				'description' => 'Use this to store or retrieve persistent notes inside WordPress. Prefer the read-only `view` command when checking existing memory, and only use write commands when the user explicitly wants memory updated.',
 				'inputSchema' => array(
 					'type'       => 'object',
 					'properties' => array(
@@ -228,10 +292,14 @@ class Abilities_Bridge_MCP_Server {
 					// Build tool name with ability_ prefix (convert / to _).
 					$tool_name = 'ability_' . str_replace( '/', '_', $ability_name );
 
+					if ( ! $this->can_current_request_access_tool( $tool_name, $ability_name ) ) {
+						continue;
+					}
+
 					// Add ability to tools list.
 					$tools[] = array(
 						'name'        => $tool_name,
-						'description' => ! empty( $ability->description ) ? $ability->description : "Execute {$ability_name} ability",
+						'description' => ! empty( $ability->description ) ? 'WordPress ability `' . $ability_name . '`. ' . trim( $ability->description ) . ' Use this when the user is specifically asking for this site action or site data.' : 'WordPress ability `' . $ability_name . '`. Use this when the user needs this exact site action or site data.',
 						'inputSchema' => $input_schema,
 					);
 				}
@@ -270,7 +338,7 @@ class Abilities_Bridge_MCP_Server {
 				$result       = $orchestrator->execute_ability_request(
 					$ability_name,
 					$arguments,
-					'MCP Server request via Claude Desktop'
+					'MCP Server request via authenticated remote client'
 				);
 
 				return $this->format_tool_response( $result );
@@ -410,3 +478,7 @@ class Abilities_Bridge_MCP_Server {
 		return rest_ensure_response( $response_data );
 	}
 }
+
+
+
+

@@ -5,6 +5,21 @@ All notable changes to Abilities Bridge will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-03-10
+
+### Added
+- WP AI Client credential integration for shared API keys via WordPress Connectors
+- WP AI Client integration test page
+- Separate settings flows for Anthropic MCP and OpenAI ChatGPT MCP
+- Direct OpenAI ChatGPT MCP flow served from the built-in WordPress MCP endpoint
+- Floating chat bubble for administrators on front-end and admin pages
+
+### Changed
+- MCP OAuth client storage is now profile-aware for Anthropic MCP and OpenAI ChatGPT MCP
+- MCP discovery metadata now includes protected-resource metadata and PKCE-focused OAuth details
+- MCP tools/list now filters visible tools using the current authenticated permissions before exposing them
+- OpenAI chat integration migrated to the Responses API
+
 ## [1.1.1] - 2026-03-06
 
 ### Added
@@ -30,7 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Initial release of Abilities Bridge WordPress plugin
-- Model Context Protocol (MCP) integration for Claude Desktop
+- Model Context Protocol (MCP) integration for Claude Desktop and ChatGPT
 - OAuth 2.0 authentication with client credentials flow
 - Memory tool for persistent AI context across sessions (database-backed)
 - Admin chat interface for direct WordPress interaction
@@ -55,6 +70,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Test suite documentation in tests/README.md
 - WordPress Coding Standards compliance
 
+[1.2.0]: https://aisystemadmin.com/abilities-bridge/releases/v1.2.0/
 [1.1.1]: https://aisystemadmin.com/abilities-bridge/releases/v1.1.1/
 [1.1.0]: https://aisystemadmin.com/abilities-bridge/releases/v1.1.0/
 [1.0.0]: https://aisystemadmin.com/abilities-bridge/releases/v1.0.0/
+

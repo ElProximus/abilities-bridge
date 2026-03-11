@@ -76,7 +76,8 @@ class Abilities_Bridge_Database {
 			user_id bigint(20) UNSIGNED NOT NULL,
 			title varchar(255) NOT NULL DEFAULT 'New Conversation',
 			provider varchar(20) NOT NULL DEFAULT 'anthropic',
-			model varchar(100) NOT NULL DEFAULT 'claude-sonnet-4-5-20250929',
+			model varchar(100) NOT NULL DEFAULT 'claude-sonnet-4-6',
+			last_openai_response_id varchar(255) DEFAULT NULL,
 			parent_conversation_id bigint(20) UNSIGNED DEFAULT NULL,
 			deleted_at datetime DEFAULT NULL,
 			deleted_by_user_id bigint(20) UNSIGNED DEFAULT NULL,
@@ -87,7 +88,8 @@ class Abilities_Bridge_Database {
 			KEY created_at (created_at),
 			KEY deleted_at (deleted_at),
 			KEY parent_conversation_id (parent_conversation_id),
-			KEY provider (provider)
+			KEY provider (provider),
+			KEY last_openai_response_id (last_openai_response_id)
 		) $charset_collate;";
 
 		// Messages table.
@@ -212,7 +214,7 @@ class Abilities_Bridge_Database {
 				$wpdb->prepare(
 					'ALTER TABLE %i ADD COLUMN model varchar(100) NOT NULL DEFAULT %s AFTER title',
 					$conversations_table,
-					'claude-sonnet-4-5-20250929'
+					'claude-sonnet-4-6'
 				)
 			);
 		}
@@ -246,6 +248,28 @@ class Abilities_Bridge_Database {
 				$conversations_table
 			)
 		);
+
+		// Check if last_openai_response_id column exists.
+		$response_id_column_exists = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT * FROM INFORMATION_SCHEMA.COLUMNS
+				WHERE TABLE_SCHEMA = %s
+				AND TABLE_NAME = %s
+				AND COLUMN_NAME = 'last_openai_response_id'",
+				DB_NAME,
+				$conversations_table
+			)
+		);
+
+		// Add last_openai_response_id column if it doesn't exist.
+		if ( empty( $response_id_column_exists ) ) {
+			$wpdb->query(
+				$wpdb->prepare(
+					'ALTER TABLE %i ADD COLUMN last_openai_response_id varchar(255) DEFAULT NULL AFTER model, ADD KEY last_openai_response_id (last_openai_response_id)',
+					$conversations_table
+				)
+			);
+		}
 
 		// Check if parent_conversation_id column exists.
 		$parent_column_exists = $wpdb->get_results(
@@ -403,11 +427,11 @@ class Abilities_Bridge_Database {
 	 *
 	 * @param int    $user_id User ID.
 	 * @param string $title Conversation title.
-	 * @param string $model Model identifier (default: claude-sonnet-4-5-20250929).
+	 * @param string $model Model identifier (default: claude-sonnet-4-6).
 	 * @param string $provider Provider key (default: anthropic).
 	 * @return int|false Conversation ID or false on failure
 	 */
-	public static function create_conversation( $user_id, $title = 'New Conversation', $model = 'claude-sonnet-4-5-20250929', $provider = 'anthropic' ) {
+	public static function create_conversation( $user_id, $title = 'New Conversation', $model = 'claude-sonnet-4-6', $provider = 'anthropic' ) {
 		global $wpdb;
 
 		$result = $wpdb->insert(
@@ -440,6 +464,37 @@ class Abilities_Bridge_Database {
 				$conversation_id
 			)
 		);
+	}
+
+	/**
+	 * Update the last OpenAI response id for a conversation.
+	 *
+	 * @param int         $conversation_id Conversation ID.
+	 * @param string|null $response_id Response id.
+	 * @return bool
+	 */
+	public static function update_last_openai_response_id( $conversation_id, $response_id ) {
+		global $wpdb;
+
+		$result = $wpdb->update(
+			self::table( self::TABLE_CONVERSATIONS ),
+			array( 'last_openai_response_id' => $response_id ),
+			array( 'id' => $conversation_id ),
+			array( '%s' ),
+			array( '%d' )
+		);
+
+		return false !== $result;
+	}
+
+	/**
+	 * Clear the last OpenAI response id for a conversation.
+	 *
+	 * @param int $conversation_id Conversation ID.
+	 * @return bool
+	 */
+	public static function clear_last_openai_response_id( $conversation_id ) {
+		return self::update_last_openai_response_id( $conversation_id, null );
 	}
 
 	/**
@@ -727,7 +782,7 @@ class Abilities_Bridge_Database {
 		$count_values = array_merge( $count_base_values, $values );
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- SQL built from hardcoded placeholders only.
-		$total = $wpdb->get_var( $wpdb->prepare( $count_sql, $count_values ) );
+		$total = $wpdb->get_var( $wpdb->prepare( $count_sql, ...$count_values ) );
 
 		// Results query.
 		$select_sql    = "SELECT l.*, c.title as conversation_title, c.deleted_at as conversation_deleted_at
@@ -739,7 +794,7 @@ class Abilities_Bridge_Database {
 		$select_values = array_merge( $select_base_values, $values, array( $per_page, $offset ) );
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- SQL built from hardcoded placeholders only.
-		$results = $wpdb->get_results( $wpdb->prepare( $select_sql, $select_values ), ARRAY_A );
+		$results = $wpdb->get_results( $wpdb->prepare( $select_sql, ...$select_values ), ARRAY_A );
 
 		return array(
 			'items'       => $results,

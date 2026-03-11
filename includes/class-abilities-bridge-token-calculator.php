@@ -146,32 +146,27 @@ class Abilities_Bridge_Token_Calculator {
 		} else {
 			// Model configurations for Claude models.
 			$model_configs = array(
-				'claude-opus-4-6'            => array(
+				'claude-opus-4-6'           => array(
 					'input_limit'  => 200000,
 					'output_limit' => 64000,
 					'name'         => 'Claude Opus 4.6',
 				),
-				'claude-opus-4-5-20251101'   => array(
+				'claude-sonnet-4-6'         => array(
 					'input_limit'  => 200000,
 					'output_limit' => 64000,
-					'name'         => 'Claude Opus 4.5',
+					'name'         => 'Claude Sonnet 4.6',
 				),
-				'claude-sonnet-4-5-20250929' => array(
-					'input_limit'  => 200000,
-					'output_limit' => 64000,
-					'name'         => 'Claude Sonnet 4.5',
-				),
-				'claude-haiku-4-5-20251001'  => array(
+				'claude-haiku-4-5-20251001' => array(
 					'input_limit'  => 200000,
 					'output_limit' => 64000,
 					'name'         => 'Claude Haiku 4.5',
 				),
 			);
 
-			// Get config for current model, fallback to Sonnet 4.5.
+			// Get config for current model, fallback to Sonnet 4.6.
 			$config = isset( $model_configs[ $model ] )
 				? $model_configs[ $model ]
-				: $model_configs['claude-sonnet-4-5-20250929'];
+				: $model_configs['claude-sonnet-4-6'];
 		}
 
 		return array(

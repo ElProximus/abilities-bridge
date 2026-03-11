@@ -7,16 +7,17 @@ MCP server for WordPress with admin interface. Connect Claude AI or OpenAI to ex
 Abilities Bridge provides two interfaces for connecting AI to your WordPress site:
 
 1. **Admin Chat Interface** - Built-in chatbot for direct interaction with Claude or OpenAI
-2. **MCP Integration** - Connect via Model Context Protocol to Claude Desktop and other MCP-compatible applications
+2. **MCP Integration** - Connect via Model Context Protocol to Anthropic MCP clients or a dedicated ChatGPT MCP proxy
 
 ## Key Features
 
 - **AI Chatbot Interface** - Natural language interaction with your WordPress site
-- **MCP Integration** - Connect WordPress to Claude Desktop and other MCP-compatible apps
+- **MCP Integration** - Separate Anthropic MCP and OpenAI ChatGPT MCP setup flows
 - **Memory Tool** - AI can maintain persistent notes in database-backed storage
 - **Abilities Execution** - Run authorized WordPress Abilities with permission controls
 - **Conversation Management** - Save, resume, and manage multiple conversations
-- **AI Models** - Claude Opus 4.6, Sonnet 4.5, Haiku 4.5 (Anthropic) and GPT-5.4, GPT-5.2, GPT-5.1, GPT-5 (OpenAI)
+- **AI Models** - Claude Opus 4.6, Sonnet 4.6, Haiku 4.5 (Anthropic) and GPT-5.4, GPT-5.2, GPT-5.1, GPT-5 (OpenAI)
+- **OpenAI Responses API** - OpenAI chat requests now use the Responses API for modern tool calling and conversation handling
 - **OAuth 2.0** - Secure authentication for MCP connections
 
 ## Memory
@@ -46,8 +47,8 @@ Requires Abilities API or WordPress 6.9+.
 
 **MCP Integration (Optional):**
 - HTTPS enabled on WordPress site (required for OAuth authentication)
-- Claude Desktop or other MCP-compatible application
-- Claude account (claude.ai) or Anthropic API key
+- Claude Desktop, ChatGPT, or other MCP-compatible application
+- Claude account (claude.ai) for Claude Desktop, or ChatGPT account with developer mode for ChatGPT
 
 ## Installation
 
@@ -95,19 +96,24 @@ Then activate the plugin through the WordPress admin.
 
 ## MCP Integration
 
-Connect your WordPress site to Claude Desktop using OAuth 2.0:
+Abilities Bridge now separates MCP setup into two provider-specific flows.
 
-### Claude Custom Connector (Recommended)
+### Anthropic MCP
 
-1. Go to **Abilities Bridge > Settings > MCP Server Setup**
-2. Click "Generate New Client Credentials"
-3. Save both Client ID and Client Secret (shown only once!)
-4. In Claude Desktop: Settings → Connectors → Add custom connector
-5. Enter credentials and MCP endpoint URL from WordPress
-6. Authenticate with your Claude account
-7. Look for the hammer icon 🔨 in Claude Desktop chat input
+1. Go to **Abilities Bridge > Settings > Anthropic MCP**
+2. Generate Anthropic MCP client credentials
+3. Use the WordPress-hosted MCP endpoint directly
+4. Connect from your Anthropic MCP client and complete OAuth with PKCE
 
-For complete documentation, see the MCP Server Setup section in your WordPress admin.
+### OpenAI ChatGPT MCP
+
+1. Go to **Abilities Bridge > Settings > OpenAI ChatGPT MCP**
+2. Generate ChatGPT MCP client credentials
+3. Copy the built-in WordPress `/mcp` endpoint
+4. Add that `/mcp` endpoint in ChatGPT developer mode
+5. Complete OAuth with PKCE using the ChatGPT-specific client credentials
+
+WordPress remains the execution and authorization layer for tools in both flows.
 
 ## Security
 
@@ -144,11 +150,11 @@ vendor/bin/phpunit --coverage-html coverage/
 
 ### Test Coverage
 
-- ✅ **Token Encryption** - AES-256-CBC encryption/decryption
-- ✅ **Token Validation** - Expiration, scope, timing-safe comparison
-- ✅ **Client Management** - Credential generation, hashing, revocation
-- ✅ **Format Validation** - OAuth token format compliance (RFC 6749, RFC 7636)
-- ✅ **Security Tests** - Error handling, edge cases, attack prevention
+- âœ… **Token Encryption** - AES-256-CBC encryption/decryption
+- âœ… **Token Validation** - Expiration, scope, timing-safe comparison
+- âœ… **Client Management** - Credential generation, hashing, revocation
+- âœ… **Format Validation** - OAuth token format compliance (RFC 6749, RFC 7636)
+- âœ… **Security Tests** - Error handling, edge cases, attack prevention
 
 For detailed testing documentation, see [`tests/README.md`](tests/README.md).
 
@@ -158,19 +164,19 @@ For detailed testing documentation, see [`tests/README.md`](tests/README.md).
 
 ```
 abilities-bridge/
-├── admin/                  # Admin interface files
-│   ├── css/               # Admin styles
-│   ├── js/                # Admin JavaScript
-│   ├── partials/          # Admin template files
-│   └── class-*.php        # Admin page classes
-├── assets/                # Plugin assets and templates
-├── includes/              # Core plugin classes
-│   ├── class-*.php        # Core functionality
-│   └── OAuth classes      # MCP OAuth implementation
-├── abilities-bridge.php   # Main plugin file
-├── readme.txt             # WordPress.org readme
-├── uninstall.php          # Uninstall cleanup
-└── LICENSE                # GPL v2 license
+â”œâ”€â”€ admin/                  # Admin interface files
+â”‚   â”œâ”€â”€ css/               # Admin styles
+â”‚   â”œâ”€â”€ js/                # Admin JavaScript
+â”‚   â”œâ”€â”€ partials/          # Admin template files
+â”‚   â””â”€â”€ class-*.php        # Admin page classes
+â”œâ”€â”€ assets/                # Plugin assets and templates
+â”œâ”€â”€ includes/              # Core plugin classes
+â”‚   â”œâ”€â”€ class-*.php        # Core functionality
+â”‚   â””â”€â”€ OAuth classes      # MCP OAuth implementation
+â”œâ”€â”€ abilities-bridge.php   # Main plugin file
+â”œâ”€â”€ readme.txt             # WordPress.org readme
+â”œâ”€â”€ uninstall.php          # Uninstall cleanup
+â””â”€â”€ LICENSE                # GPL v2 license
 ```
 
 ### Code Standards
@@ -196,7 +202,7 @@ Please ensure your code follows WordPress Coding Standards.
 
 ## Privacy & Data Handling
 
-This plugin sends data to your selected AI provider — Anthropic's Claude API (https://api.anthropic.com) or OpenAI's API (https://api.openai.com) — when you interact with the AI:
+This plugin sends data to your selected AI provider â€” Anthropic's Claude API (https://api.anthropic.com) or OpenAI's API (https://api.openai.com) â€” when you interact with the AI:
 
 - Chat messages and conversation history
 - Memory contents
@@ -238,3 +244,19 @@ Built with:
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for version history.
+## MCP Profiles
+
+Abilities Bridge now separates remote MCP setup into two provider-specific flows:
+
+### Anthropic MCP
+- Uses the WordPress-hosted MCP endpoint directly
+- Keeps Anthropic-oriented OAuth credentials separate from ChatGPT credentials
+- Is intended for Anthropic MCP clients such as Claude Desktop
+
+### OpenAI ChatGPT MCP
+- Uses the WordPress-hosted MCP endpoint directly
+- Exposes the built-in HTTPS WordPress `/mcp` endpoint for ChatGPT developer mode
+- Keeps OAuth, tool discovery, and tool execution inside WordPress
+- Uses its own client credentials and settings tab to avoid confusion with Anthropic MCP
+
+

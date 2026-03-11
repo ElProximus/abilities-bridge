@@ -6,7 +6,7 @@
 ```php
 // Main class - use this for most operations
 $conversation = new Abilities_Bridge_Conversation($conversation_id);
-$conversation->create('New Chat', 'claude-sonnet-4-5-20250929');
+$conversation->create('New Chat', 'claude-sonnet-4-6');
 $conversation->add_user_message($message);
 $conversation->send_message($message, $plan_mode);
 $result = $conversation->compact_conversation();
@@ -25,7 +25,7 @@ $tokens = Abilities_Bridge_Token_Calculator::calculate_token_usage(
 $count = Abilities_Bridge_Token_Calculator::estimate_tokens($text);
 
 // Get model limits
-$limits = Abilities_Bridge_Token_Calculator::get_model_limits('claude-sonnet-4-5-20250929');
+$limits = Abilities_Bridge_Token_Calculator::get_model_limits('claude-sonnet-4-6');
 ```
 
 ### Message Validation
@@ -158,7 +158,7 @@ $results = Abilities_Bridge_Token_Encryption::test_encryption();
 ```php
 // Create new conversation
 $conversation = new Abilities_Bridge_Conversation();
-$conversation->create('Technical Support', 'claude-sonnet-4-5-20250929');
+$conversation->create('Technical Support', 'claude-sonnet-4-6');
 
 // Send message
 $result = $conversation->send_message('How do I fix this error?');

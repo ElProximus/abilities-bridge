@@ -87,6 +87,7 @@ class Abilities_Bridge_OAuth_Token_Validator {
 					}
 					$GLOBALS['abilities_bridge_oauth_scope']     = $scope;
 					$GLOBALS['abilities_bridge_oauth_client_id'] = $stored_token['client_id'] ?? '';
+					$GLOBALS['abilities_bridge_oauth_profile']   = $stored_token['profile'] ?? Abilities_Bridge_OAuth_Client_Manager::PROFILE_ANTHROPIC;
 
 					return true;
 				}

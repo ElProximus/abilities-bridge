@@ -35,7 +35,7 @@ class Abilities_Bridge_OAuth_Authorization_Code {
 	/**
 	 * Supported PKCE code challenge methods
 	 */
-	const SUPPORTED_CHALLENGE_METHODS = array( 'S256', 'plain' );
+	const SUPPORTED_CHALLENGE_METHODS = array( 'S256' );
 
 	/**
 	 * Generate a new authorization code

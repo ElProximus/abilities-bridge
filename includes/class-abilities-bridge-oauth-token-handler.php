@@ -318,6 +318,8 @@ class Abilities_Bridge_OAuth_Token_Handler {
 			'user_id'      => $token_data['user_id'],
 			'expires_at'   => $expires_at,
 			'created_at'   => time(),
+			'scope'        => $token_data['scope'] ?? Abilities_Bridge_OAuth_Scopes::get_default_scope(),
+			'profile'      => Abilities_Bridge_OAuth_Client_Manager::get_client_profile( $token_data['client_id'] ),
 		);
 
 		update_option( self::OPTION_NAME, $oauth_data );
@@ -387,6 +389,7 @@ class Abilities_Bridge_OAuth_Token_Handler {
 			'expires_at'   => $expires_at,
 			'created_at'   => time(),
 			'scope'        => $scope,
+			'profile'      => Abilities_Bridge_OAuth_Client_Manager::get_client_profile( $client_id ),
 		);
 
 		// Store refresh token (encrypted).
@@ -400,6 +403,8 @@ class Abilities_Bridge_OAuth_Token_Handler {
 			'user_id'       => $user_id,
 			'expires_at'    => $refresh_expires,
 			'created_at'    => time(),
+			'scope'         => $scope,
+			'profile'       => Abilities_Bridge_OAuth_Client_Manager::get_client_profile( $client_id ),
 		);
 
 		update_option( self::OPTION_NAME, $oauth_data );

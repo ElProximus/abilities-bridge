@@ -51,9 +51,10 @@ class Abilities_Bridge_Message_Processor {
 		// Add user message to conversation.
 		$conversation->add_user_message( $user_message );
 
-		$provider        = Abilities_Bridge_AI_Provider::get_current_provider();
-		$model           = null;
-		$conversation_id = $conversation->get_id();
+		$provider             = Abilities_Bridge_AI_Provider::get_current_provider();
+		$model                = null;
+		$conversation_id      = $conversation->get_id();
+		$previous_response_id = '';
 
 		if ( $conversation_id ) {
 			$conversation_data = Abilities_Bridge_Database::get_conversation( $conversation_id );
@@ -65,10 +66,19 @@ class Abilities_Bridge_Message_Processor {
 				}
 
 				if ( isset( $conversation_data->model ) ) {
-					$available_models = Abilities_Bridge_AI_Provider::get_available_models( $provider );
-					if ( isset( $available_models[ $conversation_data->model ] ) ) {
-						$model = $conversation_data->model;
+					$conversation_model = $conversation_data->model;
+					if ( Abilities_Bridge_AI_Provider::PROVIDER_OPENAI === $provider ) {
+						$conversation_model = Abilities_Bridge_OpenAI_API::normalize_model( $conversation_model );
 					}
+
+					$available_models = Abilities_Bridge_AI_Provider::get_available_models( $provider );
+					if ( isset( $available_models[ $conversation_model ] ) ) {
+						$model = $conversation_model;
+					}
+				}
+
+				if ( Abilities_Bridge_AI_Provider::PROVIDER_OPENAI === $provider && ! empty( $conversation_data->last_openai_response_id ) ) {
+					$previous_response_id = $conversation_data->last_openai_response_id;
 				}
 			}
 		}
@@ -107,6 +117,10 @@ class Abilities_Bridge_Message_Processor {
 				if ( $retry > 0 ) {
 					// Exponential backoff: 1s, 2s, 4s.
 					sleep( $retry_delay * pow( 2, $retry - 1 ) );
+				}
+
+				if ( Abilities_Bridge_AI_Provider::PROVIDER_OPENAI === $provider && method_exists( $ai_client, 'set_previous_response_id' ) ) {
+					$ai_client->set_previous_response_id( $previous_response_id );
 				}
 
 				$response = $ai_client->send_message( $conversation->get_messages_for_api(), $tools, 4096, $model );
@@ -151,6 +165,11 @@ class Abilities_Bridge_Message_Processor {
 			// If still error after retries, skip this iteration.
 			if ( is_wp_error( $response ) ) {
 				break;
+			}
+
+			if ( Abilities_Bridge_AI_Provider::PROVIDER_OPENAI === $provider && $conversation_id && ! empty( $response['response_id'] ) ) {
+				$previous_response_id = $response['response_id'];
+				Abilities_Bridge_Database::update_last_openai_response_id( $conversation_id, $previous_response_id );
 			}
 
 			// Check stop reason.

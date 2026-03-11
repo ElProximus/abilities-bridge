@@ -1,0 +1,42 @@
+# Files and directories excluded from the WordPress.org distribution zip.
+# Used by wp dist-archive and GitHub Actions deployment workflows.
+
+# Development & test pages
+admin/class-abilities-bridge-chatgpt-mcp-test-page.php
+admin/class-abilities-bridge-wp-ai-client-test-page.php
+admin/js/chatgpt-mcp-test.js
+admin/js/wp-ai-client-test.js
+
+# ChatGPT MCP proxy (separate utility, not part of the WordPress plugin)
+chatgpt-mcp-proxy/
+
+# Documentation & development files
+QUICK-REFERENCE.md
+CHANGELOG.md
+README.md
+.gitignore
+.distignore
+
+# IDE and editor files
+.vscode/
+.idea/
+.claude/
+
+# Version control
+.git/
+.github/
+.wordpress-org/
+
+# Build & dependency files
+node_modules/
+vendor/
+composer.lock
+package-lock.json
+
+# Testing
+tests/
+phpunit.xml
+phpunit.xml.dist
+.phpunit.result.cache
+.phpunit.cache/
+coverage/

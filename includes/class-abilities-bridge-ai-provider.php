@@ -41,8 +41,9 @@ class Abilities_Bridge_AI_Provider {
 			return $fallback;
 		}
 
-		$openai_models     = self::get_available_models( self::PROVIDER_OPENAI );
-		$anthropic_models  = self::get_available_models( self::PROVIDER_ANTHROPIC );
+		$model            = self::normalize_model_for_provider( $model, self::PROVIDER_OPENAI );
+		$openai_models    = self::get_available_models( self::PROVIDER_OPENAI );
+		$anthropic_models = self::get_available_models( self::PROVIDER_ANTHROPIC );
 
 		if ( isset( $openai_models[ $model ] ) || 0 === strpos( $model, 'gpt-' ) ) {
 			return self::PROVIDER_OPENAI;
@@ -102,6 +103,78 @@ class Abilities_Bridge_AI_Provider {
 	}
 
 	/**
+	 * Check if WP AI Client is available.
+	 *
+	 * Detects both the standalone WP AI Client plugin and
+	 * the built-in WordPress 7.0 Connectors feature.
+	 *
+	 * @return bool
+	 */
+	public static function is_wp_ai_client_available() {
+		return function_exists( 'wp_ai_client_prompt' );
+	}
+
+	/**
+	 * Get an API key from WP AI Client / WordPress Connectors storage.
+	 *
+	 * Checks WordPress core Connectors options first (bypassing the
+	 * masking filter to get the real key), then falls back to the
+	 * standalone WP AI Client plugin array option.
+	 *
+	 * @param string $provider Provider key.
+	 * @return string API key or empty string if not found.
+	 */
+	public static function get_wp_ai_client_key( $provider ) {
+		// Map provider to WordPress core Connectors option names.
+		// Format: connectors_ai_{connector_id}_api_key
+		$core_option_map = array(
+			self::PROVIDER_ANTHROPIC => 'connectors_ai_anthropic_api_key',
+			self::PROVIDER_OPENAI    => 'connectors_ai_openai_api_key',
+		);
+
+		// 1. Check WordPress core Connectors options.
+		if ( isset( $core_option_map[ $provider ] ) ) {
+			$option_name = $core_option_map[ $provider ];
+
+			// WordPress masks Connectors keys via an option filter.
+			// Bypass it to get the real key.
+			$mask_callback = '_wp_connectors_mask_api_key';
+			$filter_name   = 'option_' . $option_name;
+			$has_filter    = has_filter( $filter_name, $mask_callback );
+
+			if ( false !== $has_filter ) {
+				remove_filter( $filter_name, $mask_callback );
+			}
+
+			$key = get_option( $option_name, '' );
+
+			if ( false !== $has_filter ) {
+				add_filter( $filter_name, $mask_callback );
+			}
+
+			if ( ! empty( $key ) ) {
+				return $key;
+			}
+		}
+
+		// 2. Fall back to standalone WP AI Client plugin array option.
+		$plugin_key_map = array(
+			self::PROVIDER_ANTHROPIC => 'anthropic',
+			self::PROVIDER_OPENAI    => 'openai',
+		);
+
+		$creds = get_option( 'wp_ai_client_provider_credentials', array() );
+		if ( is_array( $creds ) && isset( $plugin_key_map[ $provider ], $creds[ $plugin_key_map[ $provider ] ] ) ) {
+			$key = $creds[ $plugin_key_map[ $provider ] ];
+			if ( ! empty( $key ) ) {
+				return $key;
+			}
+		}
+
+		return '';
+	}
+
+	/**
 	 * Get provider API key.
 	 *
 	 * @param string|null $provider Provider key.
@@ -109,6 +182,14 @@ class Abilities_Bridge_AI_Provider {
 	 */
 	public static function get_api_key( $provider = null ) {
 		$provider = $provider ? $provider : self::get_current_provider();
+
+		// Check WP AI Client credentials when enabled.
+		if ( get_option( 'abilities_bridge_use_wp_ai_client', false ) ) {
+			$wp_ai_key = self::get_wp_ai_client_key( $provider );
+			if ( ! empty( $wp_ai_key ) ) {
+				return $wp_ai_key;
+			}
+		}
 
 		switch ( $provider ) {
 			case self::PROVIDER_OPENAI:
@@ -186,6 +267,12 @@ class Abilities_Bridge_AI_Provider {
 			}
 		}
 
+		$normalized_model = self::normalize_model_for_provider( $model, $provider );
+		if ( ! empty( $normalized_model ) && $normalized_model !== $model ) {
+			$model = $normalized_model;
+			update_user_meta( $user_id, $key, $model );
+		}
+
 		if ( empty( $model ) || ! isset( $available_models[ $model ] ) ) {
 			$model = self::get_default_model( $provider );
 		}
@@ -202,6 +289,7 @@ class Abilities_Bridge_AI_Provider {
 	 */
 	public static function set_selected_model( $model, $provider = null ) {
 		$provider         = $provider ? $provider : self::get_current_provider();
+		$model            = self::normalize_model_for_provider( $model, $provider );
 		$available_models = self::get_available_models( $provider );
 
 		if ( ! isset( $available_models[ $model ] ) ) {
@@ -215,6 +303,21 @@ class Abilities_Bridge_AI_Provider {
 			update_user_meta( $user_id, 'abilities_bridge_selected_model', $model );
 		}
 		return $updated;
+	}
+
+	/**
+	 * Normalize model ids for a specific provider.
+	 *
+	 * @param string $model Model identifier.
+	 * @param string $provider Provider key.
+	 * @return string
+	 */
+	private static function normalize_model_for_provider( $model, $provider ) {
+		if ( self::PROVIDER_OPENAI === $provider ) {
+			return Abilities_Bridge_OpenAI_API::normalize_model( $model );
+		}
+
+		return $model;
 	}
 
 	/**

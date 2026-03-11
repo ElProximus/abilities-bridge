@@ -36,7 +36,7 @@ class Abilities_Bridge_Claude_API {
 	 * Constructor
 	 */
 	public function __construct() {
-		$this->api_key = get_option( 'abilities_bridge_api_key', '' );
+		$this->api_key = Abilities_Bridge_AI_Provider::get_api_key( Abilities_Bridge_AI_Provider::PROVIDER_ANTHROPIC );
 	}
 
 	/**
@@ -46,10 +46,9 @@ class Abilities_Bridge_Claude_API {
 	 */
 	public static function get_available_models() {
 		return array(
-			'claude-opus-4-6'            => 'Opus 4.6 (Most Intelligent)',
-			'claude-opus-4-5-20251101'   => 'Opus 4.5 (Most Intelligent)',
-			'claude-sonnet-4-5-20250929' => 'Sonnet 4.5 (Balanced)',
-			'claude-haiku-4-5-20251001'  => 'Haiku 4.5 (Fastest & Cheapest)',
+			'claude-opus-4-6'           => 'Opus 4.6 (Most Intelligent)',
+			'claude-sonnet-4-6'         => 'Sonnet 4.6 (Balanced)',
+			'claude-haiku-4-5-20251001' => 'Haiku 4.5 (Fastest & Cheapest)',
 		);
 	}
 
@@ -59,7 +58,7 @@ class Abilities_Bridge_Claude_API {
 	 * @return string
 	 */
 	public static function get_default_model() {
-		return 'claude-sonnet-4-5-20250929';
+		return 'claude-sonnet-4-6';
 	}
 
 	/**
@@ -71,7 +70,7 @@ class Abilities_Bridge_Claude_API {
 		$user_id = get_current_user_id();
 		$model   = get_user_meta( $user_id, 'abilities_bridge_selected_model', true );
 
-		// Default to Sonnet 4.5 if no preference set (latest balanced model).
+		// Default to Sonnet 4.6 if no preference set (latest balanced model).
 		if ( empty( $model ) ) {
 			$model = self::get_default_model();
 		}
@@ -347,7 +346,7 @@ Important: Abilities are managed by the site administrator. If an ability you ne
 		$total_input    = $stats['total_input_tokens'] + $stats['total_cache_creation_tokens'] + $stats['total_cache_read_tokens'];
 		$cache_hit_rate = $total_input > 0 ? ( $stats['total_cache_read_tokens'] / $total_input ) * 100 : 0;
 
-		// Calculate cost savings (Sonnet 4.5 pricing).
+		// Calculate cost savings (Sonnet 4.6 pricing).
 		$regular_input_cost = 3.00; // $3 per million tokens.
 		$cached_input_cost  = 0.30; // $0.30 per million tokens (90% discount)
 

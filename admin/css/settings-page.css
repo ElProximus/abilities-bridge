@@ -157,3 +157,15 @@
 #abilities-bridge-restore-default-prompt {
 	margin-top: 10px;
 }
+
+/* Settings tabs */
+.abilities-bridge-tabs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px 4px;
+	align-items: flex-end;
+}
+
+.abilities-bridge-tabs .nav-tab {
+	white-space: nowrap;
+}

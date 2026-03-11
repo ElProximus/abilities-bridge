@@ -61,6 +61,10 @@ class Abilities_Bridge {
 			require_once ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/class-abilities-bridge-admin-page.php';
 			require_once ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/class-abilities-bridge-settings-page.php';
 			require_once ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/class-abilities-bridge-activity-log-page.php';
+			if ( defined( 'ABILITIES_BRIDGE_DEV' ) && ABILITIES_BRIDGE_DEV ) {
+				require_once ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/class-abilities-bridge-chatgpt-mcp-test-page.php';
+				require_once ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/class-abilities-bridge-wp-ai-client-test-page.php';
+			}
 		}
 	}
 
@@ -96,6 +100,21 @@ class Abilities_Bridge {
 			$settings_page->init();
 
 			Abilities_Bridge_Activity_Log_Page::init();
+
+			if ( defined( 'ABILITIES_BRIDGE_DEV' ) && ABILITIES_BRIDGE_DEV ) {
+				$chatgpt_mcp_test_page = new Abilities_Bridge_ChatGPT_MCP_Test_Page();
+				$chatgpt_mcp_test_page->init();
+
+				$wp_ai_client_test_page = new Abilities_Bridge_WP_AI_Client_Test_Page();
+				$wp_ai_client_test_page->init();
+			}
+		}
+
+		if ( rest_sanitize_boolean( get_option( 'abilities_bridge_enable_chat_bubble', false ) ) ) {
+			require_once ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/class-abilities-bridge-admin-bubble.php';
+
+			$bubble = new Abilities_Bridge_Admin_Bubble();
+			$bubble->init();
 		}
 
 		// Add settings link to plugins page.
@@ -117,3 +136,6 @@ class Abilities_Bridge {
 		return array_merge( $plugin_links, $links );
 	}
 }
+
+
+

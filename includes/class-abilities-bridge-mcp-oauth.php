@@ -221,14 +221,16 @@ class Abilities_Bridge_MCP_OAuth {
 	}
 
 	/**
-	 * Generate OAuth credentials
+	 * Generate OAuth credentials.
 	 *
 	 * @param int|null $user_id User ID.
+	 * @param string   $profile MCP client profile.
+	 * @param array    $args Additional client configuration arguments.
 	 * @return array
 	 * @deprecated Use Abilities_Bridge_OAuth_Client_Manager::generate_credentials()
 	 */
-	public function generate_credentials( $user_id = null ) {
-		return Abilities_Bridge_OAuth_Client_Manager::generate_credentials( $user_id );
+	public function generate_credentials( $user_id = null, $profile = Abilities_Bridge_OAuth_Client_Manager::PROFILE_ANTHROPIC, $args = array() ) {
+		return Abilities_Bridge_OAuth_Client_Manager::generate_credentials( $user_id, $profile, $args );
 	}
 
 	/**
@@ -254,13 +256,15 @@ class Abilities_Bridge_MCP_OAuth {
 	}
 
 	/**
-	 * Get all OAuth clients for current user
+	 * Get OAuth clients for a user and optional MCP profile.
 	 *
+	 * @param int|null    $user_id User ID.
+	 * @param string|null $profile MCP client profile filter.
 	 * @return array
 	 * @deprecated Use Abilities_Bridge_OAuth_Client_Manager::get_user_clients()
 	 */
-	public function get_user_clients() {
-		return Abilities_Bridge_OAuth_Client_Manager::get_user_clients();
+	public function get_user_clients( $user_id = null, $profile = null ) {
+		return Abilities_Bridge_OAuth_Client_Manager::get_user_clients( $user_id, $profile );
 	}
 
 	/**

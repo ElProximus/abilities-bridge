@@ -21,6 +21,7 @@ class Abilities_Bridge_OAuth_Scopes {
 	/**
 	 * Scope constants.
 	 */
+	const SCOPE_MCP       = 'mcp';
 	const SCOPE_MEMORY    = 'memory';
 	const SCOPE_ABILITIES = 'abilities';
 	const SCOPE_ADMIN     = 'admin';
@@ -33,6 +34,11 @@ class Abilities_Bridge_OAuth_Scopes {
 	 */
 	public static function get_scope_definitions() {
 		return array(
+			self::SCOPE_MCP       => array(
+				'name'        => __( 'MCP Access', 'abilities-bridge' ),
+				'description' => __( 'Standard MCP access for direct remote clients such as ChatGPT developer mode', 'abilities-bridge' ),
+				'tools'       => array( '*' ),
+			),
 			self::SCOPE_MEMORY    => array(
 				'name'        => __( 'Memory Access', 'abilities-bridge' ),
 				'description' => __( 'Read and write persistent memories', 'abilities-bridge' ),
@@ -41,17 +47,17 @@ class Abilities_Bridge_OAuth_Scopes {
 			self::SCOPE_ABILITIES => array(
 				'name'        => __( 'Abilities Access', 'abilities-bridge' ),
 				'description' => __( 'Execute approved WordPress abilities only', 'abilities-bridge' ),
-				'tools'       => array( 'ability_*' ), // Wildcard for all ability_* tools.
+				'tools'       => array( 'ability_*' ),
 			),
 			self::SCOPE_ADMIN     => array(
 				'name'        => __( 'Admin Access', 'abilities-bridge' ),
 				'description' => __( 'Full administrative access to all tools', 'abilities-bridge' ),
-				'tools'       => array( '*' ), // Wildcard = all tools.
+				'tools'       => array( '*' ),
 			),
 			self::SCOPE_CLAUDEAI  => array(
 				'name'        => __( 'Claude AI Access', 'abilities-bridge' ),
 				'description' => __( 'Full MCP access for Claude Desktop integration', 'abilities-bridge' ),
-				'tools'       => array( '*' ), // Grant all tools for Claude Desktop.
+				'tools'       => array( '*' ),
 			),
 		);
 	}
@@ -62,7 +68,6 @@ class Abilities_Bridge_OAuth_Scopes {
 	 * @return string Default scope string.
 	 */
 	public static function get_default_scope() {
-		// For Claude Desktop MCP, grant memory + abilities by default.
 		return implode(
 			' ',
 			array(
@@ -117,20 +122,16 @@ class Abilities_Bridge_OAuth_Scopes {
 
 			$scope_def = $definitions[ $scope ];
 
-			// Check for wildcard (admin scope grants all).
 			if ( in_array( '*', $scope_def['tools'], true ) ) {
 				return true;
 			}
 
-			// Check if tool is in this scope's tool list.
 			if ( in_array( $tool_name, $scope_def['tools'], true ) ) {
 				return true;
 			}
 
-			// Check for pattern wildcards (e.g., 'ability_*' matches 'ability_core_create_post').
 			foreach ( $scope_def['tools'] as $tool_pattern ) {
 				if ( strpos( $tool_pattern, '*' ) !== false ) {
-					// Convert wildcard pattern to regex.
 					$pattern = '/^' . str_replace( '*', '.*', preg_quote( $tool_pattern, '/' ) ) . '$/';
 					if ( preg_match( $pattern, $tool_name ) ) {
 						return true;

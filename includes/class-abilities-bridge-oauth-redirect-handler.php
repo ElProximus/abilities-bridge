@@ -43,6 +43,12 @@ class Abilities_Bridge_OAuth_Redirect_Handler {
 			'top'
 		);
 
+		add_rewrite_rule(
+			'^\.well-known/oauth-protected-resource$',
+			'index.php?rest_route=/abilities-bridge-mcp/v1/.well-known/oauth-protected-resource',
+			'top'
+		);
+
 		// Add query var.
 		add_filter(
 			'query_vars',
@@ -116,5 +122,21 @@ class Abilities_Bridge_OAuth_Redirect_Handler {
 			echo wp_json_encode( $data );
 			exit;
 		}
+
+		// Handle /.well-known/oauth-protected-resource metadata endpoint.
+		if ( strpos( $request_uri, '/.well-known/oauth-protected-resource' ) !== false ) {
+			$response = Abilities_Bridge_OAuth_Discovery_Handler::handle_protected_resource_request();
+			$data     = $response->get_data();
+
+			// Set proper headers.
+			header( 'Content-Type: application/json' );
+			status_header( 200 );
+
+			echo wp_json_encode( $data );
+			exit;
+		}
 	}
 }
+
+
+

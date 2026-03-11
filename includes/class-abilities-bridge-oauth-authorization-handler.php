@@ -444,20 +444,13 @@ class Abilities_Bridge_OAuth_Authorization_Handler {
 			);
 		}
 
-		// For PKCE flows, allow dynamic client registration.
-		// PKCE provides security without requiring pre-registered clients.
-		// This is the standard for modern OAuth 2.0 implementations.
-		if ( empty( $code_challenge ) ) {
-			// No PKCE - require pre-registered client (legacy/testing only).
-			$client = Abilities_Bridge_OAuth_Client_Manager::get_client( $client_id );
-			if ( ! $client ) {
-				return new WP_Error(
-					'invalid_client',
-					__( 'Invalid client_id. Pre-registration required for non-PKCE flows.', 'abilities-bridge' )
-				);
-			}
+		$client = Abilities_Bridge_OAuth_Client_Manager::get_client( $client_id );
+		if ( ! $client ) {
+			return new WP_Error(
+				'invalid_client',
+				__( 'Invalid client_id. Use generated MCP client credentials from the Abilities Bridge settings page.', 'abilities-bridge' )
+			);
 		}
-		// If PKCE is present, allow any client_id (secure via code_challenge/code_verifier).
 
 		// Validate redirect_uri.
 		if ( empty( $redirect_uri ) ) {
@@ -467,7 +460,7 @@ class Abilities_Bridge_OAuth_Authorization_Handler {
 			);
 		}
 
-		if ( ! self::is_valid_redirect_uri( $redirect_uri ) ) {
+		if ( ! self::is_valid_redirect_uri( $redirect_uri, $client_id ) ) {
 			return new WP_Error(
 				'invalid_request',
 				__( 'Invalid redirect_uri. Must be a valid HTTPS URL.', 'abilities-bridge' )
@@ -497,10 +490,10 @@ class Abilities_Bridge_OAuth_Authorization_Handler {
 			);
 		}
 
-		if ( ! in_array( $code_challenge_method, array( 'S256', 'plain' ), true ) ) {
+		if ( 'S256' !== $code_challenge_method ) {
 			return new WP_Error(
 				'invalid_request',
-				__( 'Invalid code_challenge_method. Supported methods: S256, plain', 'abilities-bridge' )
+				__( 'Invalid code_challenge_method. Supported method: S256', 'abilities-bridge' )
 			);
 		}
 
@@ -517,22 +510,18 @@ class Abilities_Bridge_OAuth_Authorization_Handler {
 	 * @return void
 	 */
 	private static function safe_redirect_to_oauth_client( $url ) {
-		// Add a one-time filter to allow the validated OAuth redirect hosts.
-		add_filter(
-			'allowed_redirect_hosts',
-			function ( $hosts ) {
-				$allowed_hosts = array(
-					'claude.ai',
-					'localhost',
-					'127.0.0.1',
-				);
+		$parsed_url = wp_parse_url( $url );
+		$host       = isset( $parsed_url['host'] ) ? $parsed_url['host'] : '';
 
-				// Apply the same filter as is_valid_redirect_uri for consistency.
-				$allowed_hosts = apply_filters( 'abilities_bridge_oauth_allowed_redirect_hosts', $allowed_hosts );
-
-				return array_merge( $hosts, $allowed_hosts );
-			}
-		);
+		if ( ! empty( $host ) ) {
+			add_filter(
+				'allowed_redirect_hosts',
+				function ( $hosts ) use ( $host ) {
+					$hosts[] = $host;
+					return array_values( array_unique( $hosts ) );
+				}
+			);
+		}
 
 		wp_safe_redirect( $url );
 	}
@@ -541,36 +530,43 @@ class Abilities_Bridge_OAuth_Authorization_Handler {
 	 * Validate redirect URI
 	 *
 	 * @param string $redirect_uri Redirect URI to validate.
+	 * @param string $client_id Client ID for profile-aware validation.
 	 * @return bool True if valid
 	 */
-	private static function is_valid_redirect_uri( $redirect_uri ) {
-		// Must be a valid URL.
+	private static function is_valid_redirect_uri( $redirect_uri, $client_id = '' ) {
 		if ( ! filter_var( $redirect_uri, FILTER_VALIDATE_URL ) ) {
 			return false;
 		}
 
 		$parsed = wp_parse_url( $redirect_uri );
+		$host   = isset( $parsed['host'] ) ? $parsed['host'] : '';
 
-		// Must use HTTPS (except localhost for development).
+		if ( empty( $host ) ) {
+			return false;
+		}
+
 		if ( 'https' !== $parsed['scheme'] ) {
-			// Allow HTTP for localhost during development.
-			if ( ! isset( $parsed['host'] ) || ! in_array( $parsed['host'], array( 'localhost', '127.0.0.1' ), true ) ) {
+			if ( ! in_array( $host, array( 'localhost', '127.0.0.1' ), true ) ) {
 				return false;
 			}
 		}
 
-		// Check against whitelist (Claude.ai and localhost).
+		$client  = ! empty( $client_id ) ? Abilities_Bridge_OAuth_Client_Manager::get_client( $client_id ) : null;
+		$profile = $client && ! empty( $client['profile'] ) ? Abilities_Bridge_OAuth_Client_Manager::normalize_profile( $client['profile'] ) : Abilities_Bridge_OAuth_Client_Manager::PROFILE_ANTHROPIC;
+
 		$allowed_hosts = array(
-			'claude.ai',
 			'localhost',
 			'127.0.0.1',
+			'claude.ai',
+			'chat.openai.com',
+			'chatgpt.com',
 		);
 
-		// Allow custom redirect URIs via filter.
-		$allowed_hosts = apply_filters( 'abilities_bridge_oauth_allowed_redirect_hosts', $allowed_hosts );
+
+		$allowed_hosts = apply_filters( 'abilities_bridge_oauth_allowed_redirect_hosts', array_values( array_unique( $allowed_hosts ) ), $client_id, $profile );
 
 		foreach ( $allowed_hosts as $allowed_host ) {
-			if ( isset( $parsed['host'] ) && ( $parsed['host'] === $allowed_host || strpos( $parsed['host'], '.' . $allowed_host ) !== false ) ) {
+			if ( $host === $allowed_host || strpos( $host, '.' . $allowed_host ) !== false ) {
 				return true;
 			}
 		}

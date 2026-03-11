@@ -196,6 +196,64 @@ class Abilities_Bridge_Ability_Permissions {
 	}
 
 	/**
+	 * Check whether an ability should be visible to the current user for MCP listing.
+	 *
+	 * This performs the non-input-specific permission gates so tools/list only returns
+	 * abilities that are currently available to the authenticated user. Execution still
+	 * performs the full permission and validation pipeline separately.
+	 *
+	 * @param string $ability_name Ability name.
+	 * @return array Permission result.
+	 */
+	public static function can_access_ability( $ability_name ) {
+		$result = array(
+			'allowed'      => false,
+			'reason'       => '',
+			'checks'       => array(),
+			'ability_name' => $ability_name,
+		);
+
+		$abilities_enabled = get_option( 'abilities_bridge_enable_abilities_api', false );
+		if ( ! $abilities_enabled ) {
+			$result['reason'] = 'WordPress Abilities API is disabled.';
+			return $result;
+		}
+
+		if ( ! function_exists( 'wp_get_ability' ) || ! wp_get_ability( $ability_name ) ) {
+			$result['reason'] = 'Ability not registered in WordPress';
+			return $result;
+		}
+
+		$config = self::get_ability_config( $ability_name );
+		if ( ! $config ) {
+			$result['reason'] = 'Ability not in permission registry';
+			return $result;
+		}
+
+		if ( ! $config['enabled'] ) {
+			$result['reason'] = 'Ability disabled by admin';
+			return $result;
+		}
+
+		$rate_result = self::check_rate_limits( $ability_name, $config );
+		if ( ! $rate_result['passed'] ) {
+			$result['reason'] = $rate_result['reason'];
+			return $result;
+		}
+
+		$cap_result = self::check_user_capability( $config );
+		if ( ! $cap_result['passed'] ) {
+			$result['reason'] = $cap_result['reason'];
+			return $result;
+		}
+
+		$result['allowed'] = true;
+		$result['reason']  = 'Ability is visible and callable for current user';
+
+		return $result;
+	}
+
+	/**
 	 * ADMIN ONLY: Register ability for execution
 	 *
 	 * @param string $ability_name Name of ability (e.g., 'core/create-post').

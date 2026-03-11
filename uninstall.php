@@ -58,6 +58,7 @@ delete_option( 'abilities_bridge_enable_memory' );
 delete_option( 'abilities_bridge_memory_consent' );
 delete_option( 'abilities_bridge_db_version' );
 delete_option( 'abilities_bridge_needs_ability_registration' );
+delete_option( 'abilities_bridge_use_wp_ai_client' );
 
 // Delete OAuth options.
 delete_option( 'abilities_bridge_mcp_oauth' );

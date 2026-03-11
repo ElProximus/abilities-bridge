@@ -19,6 +19,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Abilities_Bridge_Settings_Page {
 
 	/**
+	 * MCP profile identifiers.
+	 */
+	const MCP_PROFILE_ANTHROPIC = 'anthropic_mcp';
+	const MCP_PROFILE_CHATGPT   = 'openai_chatgpt_mcp';
+
+	/**
 	 * Get the current admin page parameter for routing checks.
 	 *
 	 * This is used internally for routing logic only - it does not require
@@ -58,6 +64,54 @@ class Abilities_Bridge_Settings_Page {
 		}
 
 		return true;
+	}
+
+	/**
+	 * Get MCP profile definitions used by settings UI.
+	 *
+	 * @return array
+	 */
+	private function get_mcp_profiles() {
+		return array(
+			self::MCP_PROFILE_ANTHROPIC => array(
+				'label'        => __( 'Anthropic MCP', 'abilities-bridge' ),
+				'tab'          => 'anthropic-mcp',
+				'button_label' => __( 'Generate New Anthropic Client Credentials', 'abilities-bridge' ),
+				'intro'        => __( 'Connect this WordPress site to Anthropic MCP clients such as Claude Desktop. This uses the WordPress-hosted MCP endpoint directly.', 'abilities-bridge' ),
+			),
+			self::MCP_PROFILE_CHATGPT => array(
+				'label'        => __( 'OpenAI ChatGPT MCP', 'abilities-bridge' ),
+				'tab'          => 'chatgpt-mcp',
+				'button_label' => __( 'Generate New ChatGPT Client Credentials', 'abilities-bridge' ),
+				'intro'        => __( 'Connect ChatGPT developer mode directly to this WordPress site using the built-in MCP endpoint and separate ChatGPT-specific OAuth credentials.', 'abilities-bridge' ),
+			),
+		);
+	}
+
+	/**
+	 * Get MCP profile data.
+	 *
+	 * @param string $profile Requested profile.
+	 * @return array
+	 */
+	private function get_mcp_profile( $profile ) {
+		$profiles = $this->get_mcp_profiles();
+		$profile  = sanitize_key( $profile );
+
+		if ( isset( $profiles[ $profile ] ) ) {
+			return $profiles[ $profile ];
+		}
+
+		return $profiles[ self::MCP_PROFILE_ANTHROPIC ];
+	}
+
+	/**
+	 * Get the WordPress-hosted MCP endpoint URL.
+	 *
+	 * @return string
+	 */
+	private function get_mcp_endpoint_url() {
+		return rest_url( 'abilities-bridge-mcp/v1/mcp' );
 	}
 
 	/**
@@ -147,6 +201,26 @@ class Abilities_Bridge_Settings_Page {
 
 		register_setting(
 			'abilities_bridge_settings',
+			'abilities_bridge_enable_chat_bubble',
+			array(
+				'type'              => 'boolean',
+				'sanitize_callback' => 'rest_sanitize_boolean',
+				'default'           => false,
+			)
+		);
+
+		register_setting(
+			'abilities_bridge_settings',
+			'abilities_bridge_use_wp_ai_client',
+			array(
+				'type'              => 'boolean',
+				'sanitize_callback' => 'rest_sanitize_boolean',
+				'default'           => false,
+			)
+		);
+
+		register_setting(
+			'abilities_bridge_settings',
 			'abilities_bridge_enable_memory',
 			array(
 				'type'              => 'boolean',
@@ -184,6 +258,22 @@ class Abilities_Bridge_Settings_Page {
 			'abilities_bridge_openai_api_key',
 			__( 'OpenAI API Key', 'abilities-bridge' ),
 			array( $this, 'render_openai_api_key_field' ),
+			'abilities-bridge-settings',
+			'abilities_bridge_api_section'
+		);
+
+		add_settings_field(
+			'abilities_bridge_use_wp_ai_client',
+			__( 'WP AI Client', 'abilities-bridge' ),
+			array( $this, 'render_wp_ai_client_field' ),
+			'abilities-bridge-settings',
+			'abilities_bridge_api_section'
+		);
+
+		add_settings_field(
+			'abilities_bridge_enable_chat_bubble',
+			__( 'Chat Bubble', 'abilities-bridge' ),
+			array( $this, 'render_chat_bubble_field' ),
 			'abilities-bridge-settings',
 			'abilities_bridge_api_section'
 		);
@@ -318,7 +408,7 @@ class Abilities_Bridge_Settings_Page {
 
 		<!-- API Key Consent Checkboxes -->
 		<div id="anthropic-api-key-consent-box" style="background: #fff3cd; border: 1px solid #ffc107; padding: 15px; margin: 15px 0; border-radius: 4px; display: none;">
-			<h4 style="margin-top: 0; color: #856404;">⚠️ <?php esc_html_e( 'API Key Consent Required', 'abilities-bridge' ); ?></h4>
+			<h4 style="margin-top: 0; color: #856404;">[!] <?php esc_html_e( 'API Key Consent Required', 'abilities-bridge' ); ?></h4>
 			<p style="margin-bottom: 15px;"><strong><?php esc_html_e( 'Before saving your API key, please confirm:', 'abilities-bridge' ); ?></strong></p>
 
 			<label style="display: block; margin-bottom: 10px; cursor: pointer;">
@@ -370,7 +460,7 @@ class Abilities_Bridge_Settings_Page {
 
 		<!-- API Key Consent Checkboxes -->
 		<div id="openai-api-key-consent-box" style="background: #fff3cd; border: 1px solid #ffc107; padding: 15px; margin: 15px 0; border-radius: 4px; display: none;">
-			<h4 style="margin-top: 0; color: #856404;">⚠️ <?php esc_html_e( 'API Key Consent Required', 'abilities-bridge' ); ?></h4>
+			<h4 style="margin-top: 0; color: #856404;">[!] <?php esc_html_e( 'API Key Consent Required', 'abilities-bridge' ); ?></h4>
 			<p style="margin-bottom: 15px;"><strong><?php esc_html_e( 'Before saving your API key, please confirm:', 'abilities-bridge' ); ?></strong></p>
 
 			<label style="display: block; margin-bottom: 10px; cursor: pointer;">
@@ -383,6 +473,84 @@ class Abilities_Bridge_Settings_Page {
 				<?php esc_html_e( 'I understand API costs are my responsibility and billed by my AI provider directly. The makers of this plugin are NOT responsible for API usage costs or billing.', 'abilities-bridge' ); ?>
 			</label>
 		</div>
+		<?php
+	}
+
+	/**
+	 * Render WP AI Client field
+	 */
+	public function render_wp_ai_client_field() {
+		$enabled   = get_option( 'abilities_bridge_use_wp_ai_client', false );
+		$available = Abilities_Bridge_AI_Provider::is_wp_ai_client_available();
+		?>
+		<label for="abilities_bridge_use_wp_ai_client">
+			<input
+				type="checkbox"
+				name="abilities_bridge_use_wp_ai_client"
+				id="abilities_bridge_use_wp_ai_client"
+				value="1"
+				<?php checked( $enabled, true ); ?>
+				<?php disabled( ! $available ); ?>
+			/>
+			<?php esc_html_e( 'Use API keys from WordPress Connectors (WP AI Client) instead of the keys above.', 'abilities-bridge' ); ?>
+		</label>
+
+		<?php if ( $available ) : ?>
+			<p class="description">
+				<?php esc_html_e( 'When enabled, Abilities Bridge will use the shared API keys configured in Settings > Connectors. If a key is not found there, it falls back to the local keys above.', 'abilities-bridge' ); ?>
+			</p>
+
+			<?php if ( $enabled ) : ?>
+				<?php
+				$anthropic_key = Abilities_Bridge_AI_Provider::get_wp_ai_client_key( Abilities_Bridge_AI_Provider::PROVIDER_ANTHROPIC );
+				$openai_key    = Abilities_Bridge_AI_Provider::get_wp_ai_client_key( Abilities_Bridge_AI_Provider::PROVIDER_OPENAI );
+				?>
+				<div style="margin-top: 8px;">
+					<span style="margin-right: 15px;">
+						<?php if ( ! empty( $anthropic_key ) ) : ?>
+							<span style="color: green;">[OK]</span> <?php esc_html_e( 'Anthropic key found', 'abilities-bridge' ); ?>
+						<?php else : ?>
+							<span style="color: #999;">[ - ]</span> <?php esc_html_e( 'Anthropic key not found (will use local key)', 'abilities-bridge' ); ?>
+						<?php endif; ?>
+					</span>
+					<br>
+					<span>
+						<?php if ( ! empty( $openai_key ) ) : ?>
+							<span style="color: green;">[OK]</span> <?php esc_html_e( 'OpenAI key found', 'abilities-bridge' ); ?>
+						<?php else : ?>
+							<span style="color: #999;">[ - ]</span> <?php esc_html_e( 'OpenAI key not found (will use local key)', 'abilities-bridge' ); ?>
+						<?php endif; ?>
+					</span>
+				</div>
+			<?php endif; ?>
+
+		<?php else : ?>
+			<p class="description" style="color: #999;">
+				<?php esc_html_e( 'WP AI Client is not detected. Install and activate WP AI Client or upgrade to WordPress 7.0+ to use shared credentials.', 'abilities-bridge' ); ?>
+			</p>
+		<?php endif; ?>
+		<?php
+	}
+
+	/**
+	 * Render chat bubble field
+	 */
+	public function render_chat_bubble_field() {
+		$enabled = get_option( 'abilities_bridge_enable_chat_bubble', false );
+		?>
+		<label for="abilities_bridge_enable_chat_bubble">
+			<input
+				type="checkbox"
+				name="abilities_bridge_enable_chat_bubble"
+				id="abilities_bridge_enable_chat_bubble"
+				value="1"
+				<?php checked( $enabled, true ); ?>
+			/>
+			<?php esc_html_e( 'Enable the floating chat bubble for administrators on all front-end and admin pages.', 'abilities-bridge' ); ?>
+		</label>
+		<p class="description">
+			<?php esc_html_e( 'The bubble uses the same saved conversations, provider, and model selection as the main Abilities Bridge chat.', 'abilities-bridge' ); ?>
+		</p>
 		<?php
 	}
 
@@ -677,19 +845,27 @@ class Abilities_Bridge_Settings_Page {
 				wp_die( esc_html__( 'You must complete the welcome wizard and provide consent before generating OAuth credentials.', 'abilities-bridge' ) );
 			}
 
-			$oauth       = new Abilities_Bridge_MCP_OAuth();
-			$credentials = $oauth->generate_credentials();
+			$profile = isset( $_POST['mcp_profile'] ) ? sanitize_key( wp_unslash( $_POST['mcp_profile'] ) ) : self::MCP_PROFILE_ANTHROPIC;
+			$oauth   = new Abilities_Bridge_MCP_OAuth();
+			$credentials = $oauth->generate_credentials(
+				null,
+				$profile,
+				array(
+					'name'             => $this->get_mcp_profile( $profile )['label'],
+					'default_site_url' => home_url( '/' ),
+				)
+			);
 
 			// Store in transient to display after redirect.
 			set_transient( 'abilities_bridge_new_credentials', $credentials, 60 );
 
 			// Redirect to avoid resubmission (include nonce for credentials-generated flag).
-			// Note: wp_nonce_url() must NOT be used here — it calls esc_html() which
+		// Note: wp_nonce_url() must NOT be used here - it calls esc_html() which
 			// converts & to &amp;, breaking query parameters in the Location header.
 			$redirect_url = add_query_arg(
 				array(
 					'credentials-generated' => '1',
-					'tab'                   => 'mcp-setup',
+					'tab'                   => $this->get_mcp_profile( $profile )['tab'],
 					'_wpnonce'              => wp_create_nonce( 'abilities_bridge_settings_nav' ),
 				),
 				admin_url( 'admin.php?page=abilities-bridge-settings' )
@@ -709,6 +885,7 @@ class Abilities_Bridge_Settings_Page {
 				);
 			}
 
+			$profile = isset( $_POST['mcp_profile'] ) ? sanitize_key( wp_unslash( $_POST['mcp_profile'] ) ) : self::MCP_PROFILE_ANTHROPIC;
 			$oauth = new Abilities_Bridge_MCP_OAuth();
 
 			if ( ! isset( $_POST['client_id'] ) ) {
@@ -734,9 +911,18 @@ class Abilities_Bridge_Settings_Page {
 			}
 
 			// Redirect to avoid resubmission.
-			wp_safe_redirect( admin_url( 'admin.php?page=abilities-bridge-settings' ) );
+			$redirect_url = add_query_arg(
+				array(
+					'tab'      => $this->get_mcp_profile( $profile )['tab'],
+					'_wpnonce' => wp_create_nonce( 'abilities_bridge_settings_nav' ),
+				),
+				admin_url( 'admin.php?page=abilities-bridge-settings' )
+			);
+			wp_safe_redirect( $redirect_url );
 			exit;
 		}
+
+
 	}
 
 	/**
@@ -744,11 +930,11 @@ class Abilities_Bridge_Settings_Page {
 	 */
 	public function render_mcp_section() {
 		// Get MCP endpoint URL.
-		$mcp_endpoint = rest_url( 'abilities-bridge-mcp/v1/mcp' );
+		$mcp_endpoint = $this->get_mcp_endpoint_url();
 
 		// Check for existing OAuth credentials.
 		$oauth            = new Abilities_Bridge_MCP_OAuth();
-		$existing_clients = $oauth->get_user_clients();
+		$existing_clients = $oauth->get_user_clients( null, self::MCP_PROFILE_ANTHROPIC );
 
 		// Check for newly generated credentials (from transient after redirect).
 		// Verify nonce before accessing the credentials-generated URL parameter.
@@ -764,7 +950,7 @@ class Abilities_Bridge_Settings_Page {
 
 		if ( $show_credentials ) {
 			$credentials = get_transient( 'abilities_bridge_new_credentials' );
-			if ( $credentials ) {
+			if ( $credentials && ( $credentials['profile'] ?? self::MCP_PROFILE_ANTHROPIC ) === self::MCP_PROFILE_ANTHROPIC ) {
 				$generated_client_id     = $credentials['client_id'];
 				$generated_client_secret = $credentials['client_secret'];
 				delete_transient( 'abilities_bridge_new_credentials' );
@@ -773,9 +959,9 @@ class Abilities_Bridge_Settings_Page {
 
 		?>
 		<div class="card" style="max-width: 100%; margin-top: 20px;">
-			<h2><?php esc_html_e( 'MCP Server Setup', 'abilities-bridge' ); ?></h2>
+			<h2><?php esc_html_e( 'Anthropic MCP', 'abilities-bridge' ); ?></h2>
 			<p>
-				<?php esc_html_e( 'Connect this WordPress site to Claude Desktop using the Model Context Protocol (MCP). This creates a remote connector that runs on your WordPress server.', 'abilities-bridge' ); ?>
+				<?php esc_html_e( 'Connect this WordPress site to Anthropic MCP clients such as Claude Desktop using the Model Context Protocol (MCP). This creates a remote connector that runs on your WordPress server.', 'abilities-bridge' ); ?>
 			</p>
 
 		<?php if ( ! is_ssl() ) : ?>
@@ -789,14 +975,25 @@ class Abilities_Bridge_Settings_Page {
 
 			<h3><?php esc_html_e( 'MCP Connector Setup', 'abilities-bridge' ); ?></h3>
 
+			<div style="background: #f0f6fc; border-left: 4px solid #0073aa; padding: 15px; margin: 15px 0;">
+				<h4 style="margin-top: 0;"><?php esc_html_e( 'Step 1: Remote MCP Server URL', 'abilities-bridge' ); ?></h4>
+				<p><?php esc_html_e( 'Use this URL to connect from Anthropic MCP clients:', 'abilities-bridge' ); ?></p>
+				<code id="mcp-endpoint-url" style="display: block; padding: 10px; background: #fff; border: 1px solid #ddd;">
+					<?php echo esc_url( $mcp_endpoint ); ?>
+				</code>
+				<button type="button" class="button button-small mcp-copy-btn" data-copy-target="mcp-endpoint-url" style="margin-top: 10px;">
+					<?php esc_html_e( 'Copy URL', 'abilities-bridge' ); ?>
+				</button>
+			</div>
+
 			<div style="background: #d1f0d1; border-left: 4px solid #46b450; padding: 15px; margin: 15px 0;">
-				<h4 style="margin-top: 0;"><?php esc_html_e( 'Step 1: Generate Client Credentials', 'abilities-bridge' ); ?></h4>
+				<h4 style="margin-top: 0;"><?php esc_html_e( 'Step 2: Generate Client Credentials', 'abilities-bridge' ); ?></h4>
 
 				<?php if ( isset( $generated_client_id ) && isset( $generated_client_secret ) ) : ?>
 					<!-- Security Warning Banner -->
 					<div class="notice notice-warning inline" style="margin: 15px 0; padding: 15px; border-left-width: 4px;">
 						<p style="margin: 0;">
-							<strong style="font-size: 14px;">⚠️ SECURITY NOTICE: ONE-TIME VIEW</strong><br>
+							<strong style="font-size: 14px;">[!] SECURITY NOTICE: ONE-TIME VIEW</strong><br>
 							<span style="font-size: 13px;">
 								<?php esc_html_e( 'These credentials are shown ONE TIME ONLY and cannot be viewed again. Copy them immediately and store them securely.', 'abilities-bridge' ); ?>
 								<?php esc_html_e( 'If you lose them, you must revoke and generate new credentials.', 'abilities-bridge' ); ?>
@@ -827,9 +1024,10 @@ class Abilities_Bridge_Settings_Page {
 					<form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=abilities-bridge-settings' ) ); ?>">
 						<?php wp_nonce_field( 'abilities_bridge_mcp_generate_oauth' ); ?>
 						<input type="hidden" name="generate_oauth" value="1">
+						<input type="hidden" name="mcp_profile" value="<?php echo esc_attr( self::MCP_PROFILE_ANTHROPIC ); ?>">
 						<p>
 							<button type="submit" class="button button-primary">
-								<?php esc_html_e( 'Generate New Client Credentials', 'abilities-bridge' ); ?>
+								<?php esc_html_e( 'Generate New Anthropic Client Credentials', 'abilities-bridge' ); ?>
 							</button>
 						</p>
 					</form>
@@ -849,29 +1047,18 @@ class Abilities_Bridge_Settings_Page {
 			</div>
 
 			<div style="background: #f0f6fc; border-left: 4px solid #0073aa; padding: 15px; margin: 15px 0;">
-				<h4 style="margin-top: 0;"><?php esc_html_e( 'Step 2: Remote MCP Server URL', 'abilities-bridge' ); ?></h4>
-				<p><?php esc_html_e( 'Use this URL to connect from Claude Desktop:', 'abilities-bridge' ); ?></p>
-				<code id="mcp-endpoint-url" style="display: block; padding: 10px; background: #fff; border: 1px solid #ddd;">
-					<?php echo esc_url( $mcp_endpoint ); ?>
-				</code>
-				<button type="button" class="button button-small mcp-copy-btn" data-copy-target="mcp-endpoint-url" style="margin-top: 10px;">
-					<?php esc_html_e( 'Copy URL', 'abilities-bridge' ); ?>
-				</button>
-			</div>
-
-			<div style="background: #f0f6fc; border-left: 4px solid #0073aa; padding: 15px; margin: 15px 0;">
-				<h4 style="margin-top: 0;"><?php esc_html_e( 'Step 3: Add to Claude Desktop', 'abilities-bridge' ); ?></h4>
+				<h4 style="margin-top: 0;"><?php esc_html_e( 'Step 3: Add to Anthropic MCP Client', 'abilities-bridge' ); ?></h4>
 
 				<p><strong><?php esc_html_e( 'Method A: Using Claude Desktop GUI (Recommended):', 'abilities-bridge' ); ?></strong></p>
 				<ol style="margin-left: 20px;">
-					<li><?php esc_html_e( 'Open Claude Desktop → Settings → Connectors', 'abilities-bridge' ); ?></li>
+					<li><?php esc_html_e( 'Open Claude Desktop -> Settings -> Connectors', 'abilities-bridge' ); ?></li>
 					<li><?php esc_html_e( 'Click "Add custom connector"', 'abilities-bridge' ); ?></li>
 					<li><?php esc_html_e( 'Fill in the form:', 'abilities-bridge' ); ?>
 						<ul style="list-style: disc; margin-left: 20px; margin-top: 5px;">
 							<li><strong><?php esc_html_e( 'Name:', 'abilities-bridge' ); ?></strong> <?php esc_html_e( 'WordPress (or any name you prefer)', 'abilities-bridge' ); ?></li>
-							<li><strong><?php esc_html_e( 'Remote MCP server URL:', 'abilities-bridge' ); ?></strong> <?php esc_html_e( 'Paste the URL from Step 2 above', 'abilities-bridge' ); ?></li>
-							<li><strong><?php esc_html_e( 'OAuth Client ID:', 'abilities-bridge' ); ?></strong> <?php esc_html_e( 'Paste your Client ID from Step 1', 'abilities-bridge' ); ?></li>
-							<li><strong><?php esc_html_e( 'OAuth Client Secret:', 'abilities-bridge' ); ?></strong> <?php esc_html_e( 'Paste your Client Secret from Step 1', 'abilities-bridge' ); ?></li>
+							<li><strong><?php esc_html_e( 'Remote MCP server URL:', 'abilities-bridge' ); ?></strong> <?php esc_html_e( 'Paste the URL from Step 1 above', 'abilities-bridge' ); ?></li>
+							<li><strong><?php esc_html_e( 'OAuth Client ID:', 'abilities-bridge' ); ?></strong> <?php esc_html_e( 'Paste your Client ID from Step 2', 'abilities-bridge' ); ?></li>
+							<li><strong><?php esc_html_e( 'OAuth Client Secret:', 'abilities-bridge' ); ?></strong> <?php esc_html_e( 'Paste your Client Secret from Step 2', 'abilities-bridge' ); ?></li>
 						</ul>
 					</li>
 					<li><?php esc_html_e( 'Click "Add connector"', 'abilities-bridge' ); ?></li>
@@ -919,6 +1106,7 @@ class Abilities_Bridge_Settings_Page {
 										<?php wp_nonce_field( 'abilities_bridge_mcp_revoke_client' ); ?>
 										<input type="hidden" name="client_id" value="<?php echo esc_attr( $client['client_id'] ); ?>">
 										<input type="hidden" name="revoke_client" value="1">
+								<input type="hidden" name="mcp_profile" value="<?php echo esc_attr( self::MCP_PROFILE_ANTHROPIC ); ?>">
 										<button type="submit" class="button button-small button-link-delete" onclick="return confirm('<?php esc_attr_e( 'Are you sure you want to revoke this client? This will invalidate all tokens and the client will no longer be able to connect.', 'abilities-bridge' ); ?>');">
 											<?php esc_html_e( 'Revoke', 'abilities-bridge' ); ?>
 										</button>
@@ -937,6 +1125,111 @@ class Abilities_Bridge_Settings_Page {
 	}
 
 	/**
+	 * Render OpenAI ChatGPT MCP section.
+	 */
+	public function render_chatgpt_mcp_section() {
+		$mcp_endpoint      = $this->get_mcp_endpoint_url();
+		$oauth             = new Abilities_Bridge_MCP_OAuth();
+		$existing_clients  = $oauth->get_user_clients( null, self::MCP_PROFILE_CHATGPT );
+		$generated_client_id     = null;
+		$generated_client_secret = null;
+		$show_credentials        = false;
+
+		if ( $this->verify_settings_nonce() ) {
+			$credentials_flag = filter_input( INPUT_GET, 'credentials-generated', FILTER_SANITIZE_FULL_SPECIAL_CHARS );
+			$show_credentials = ! empty( $credentials_flag );
+		}
+
+		if ( $show_credentials ) {
+			$credentials = get_transient( 'abilities_bridge_new_credentials' );
+			if ( $credentials && ( $credentials['profile'] ?? '' ) === self::MCP_PROFILE_CHATGPT ) {
+				$generated_client_id     = $credentials['client_id'];
+				$generated_client_secret = $credentials['client_secret'];
+				delete_transient( 'abilities_bridge_new_credentials' );
+			}
+		}
+		?>
+		<div class="card" style="max-width: 100%; margin-top: 20px;">
+			<h2><?php esc_html_e( 'OpenAI ChatGPT MCP', 'abilities-bridge' ); ?></h2>
+			<p><?php esc_html_e( 'Connect ChatGPT developer mode directly to this WordPress site. This uses the built-in HTTPS MCP endpoint and separate ChatGPT-specific OAuth credentials so the ChatGPT flow stays clear and self-contained inside WordPress.', 'abilities-bridge' ); ?></p>
+
+			<div style="background: #f0f6fc; border-left: 4px solid #0073aa; padding: 15px; margin: 15px 0;">
+				<h4 style="margin-top: 0;"><?php esc_html_e( 'Step 1: Direct WordPress /mcp Endpoint', 'abilities-bridge' ); ?></h4>
+				<code id="chatgpt-mcp-endpoint-url" style="display: block; padding: 10px; background: #fff; border: 1px solid #ddd;"><?php echo esc_url( $mcp_endpoint ); ?></code>
+				<button type="button" class="button button-small mcp-copy-btn" data-copy-target="chatgpt-mcp-endpoint-url" style="margin-top: 10px;"><?php esc_html_e( 'Copy URL', 'abilities-bridge' ); ?></button>
+			</div>
+
+			<div style="background: #d1f0d1; border-left: 4px solid #46b450; padding: 15px; margin: 15px 0;">
+				<h4 style="margin-top: 0;"><?php esc_html_e( 'Step 2: Generate Client Credentials', 'abilities-bridge' ); ?></h4>
+				<?php if ( isset( $generated_client_id ) && isset( $generated_client_secret ) ) : ?>
+					<div id="generated-credentials" data-one-time-view="true" style="background: #fff; border: 2px solid #46b450; padding: 15px; margin: 10px 0;">
+						<p><strong><?php esc_html_e( 'Your ChatGPT MCP OAuth Credentials:', 'abilities-bridge' ); ?></strong></p>
+						<p style="margin-top: 15px;"><strong><?php esc_html_e( 'Client ID:', 'abilities-bridge' ); ?></strong></p>
+						<code id="chatgpt-mcp-client-id" style="display: block; padding: 10px; background: #f0f0f0; word-break: break-all;"><?php echo esc_html( $generated_client_id ); ?></code>
+						<button type="button" class="button button-small mcp-copy-btn" data-copy-target="chatgpt-mcp-client-id" style="margin-top: 5px;"><?php esc_html_e( 'Copy Client ID', 'abilities-bridge' ); ?></button>
+						<p style="margin-top: 15px;"><strong><?php esc_html_e( 'Client Secret:', 'abilities-bridge' ); ?></strong></p>
+						<code id="chatgpt-mcp-client-secret" style="display: block; padding: 10px; background: #f0f0f0; word-break: break-all;"><?php echo esc_html( $generated_client_secret ); ?></code>
+						<button type="button" class="button button-small mcp-copy-btn" data-copy-target="chatgpt-mcp-client-secret" style="margin-top: 5px;"><?php esc_html_e( 'Copy Client Secret', 'abilities-bridge' ); ?></button>
+					</div>
+				<?php else : ?>
+					<form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=abilities-bridge-settings' ) ); ?>">
+						<?php wp_nonce_field( 'abilities_bridge_mcp_generate_oauth' ); ?>
+						<input type="hidden" name="generate_oauth" value="1">
+						<input type="hidden" name="mcp_profile" value="<?php echo esc_attr( self::MCP_PROFILE_CHATGPT ); ?>">
+						<?php submit_button( __( 'Generate New ChatGPT Client Credentials', 'abilities-bridge' ), 'primary', 'submit', false ); ?>
+					</form>
+				<?php endif; ?>
+			</div>
+
+			<div style="background: #f0f6fc; border-left: 4px solid #0073aa; padding: 15px; margin: 15px 0;">
+				<h4 style="margin-top: 0;"><?php esc_html_e( 'Step 3: Connect in ChatGPT Developer Mode', 'abilities-bridge' ); ?></h4>
+				<ol style="margin-left: 20px;">
+					<li><?php esc_html_e( 'Generate credentials in Step 2 above.', 'abilities-bridge' ); ?></li>
+					<li><?php esc_html_e( 'Go to your ChatGPT account to Settings > Apps > Advanced Settings and enable developer mode.', 'abilities-bridge' ); ?></li>
+					<li><?php esc_html_e( 'Click "Create app".', 'abilities-bridge' ); ?></li>
+					<li><?php esc_html_e( 'Add the MCP Server URL from Step 1 above.', 'abilities-bridge' ); ?></li>
+					<li><?php esc_html_e( 'For Authentication choose "OAuth".', 'abilities-bridge' ); ?></li>
+					<li><?php esc_html_e( 'Enable advanced settings.', 'abilities-bridge' ); ?></li>
+					<li><?php esc_html_e( 'Add the client ID and client secret from Step 2.', 'abilities-bridge' ); ?></li>
+					<li><?php esc_html_e( 'Disable OIDC for OpenID support.', 'abilities-bridge' ); ?></li>
+					<li><?php esc_html_e( 'Create app and complete the browser OAuth authorization flow and return to ChatGPT to test the connection.', 'abilities-bridge' ); ?></li>
+				</ol>
+			</div>
+
+			<?php if ( ! empty( $existing_clients ) ) : ?>
+				<h3 style="margin-top: 30px;"><?php esc_html_e( 'Manage ChatGPT Client Credentials', 'abilities-bridge' ); ?></h3>
+				<table class="widefat" style="margin-top: 15px;">
+					<thead>
+						<tr>
+							<th><?php esc_html_e( 'Client ID', 'abilities-bridge' ); ?></th>
+							<th><?php esc_html_e( 'Created', 'abilities-bridge' ); ?></th>
+							<th><?php esc_html_e( 'Actions', 'abilities-bridge' ); ?></th>
+						</tr>
+					</thead>
+					<tbody>
+						<?php foreach ( $existing_clients as $client ) : ?>
+							<tr>
+								<td><code><?php echo esc_html( $client['client_id'] ); ?></code></td>
+								<td><?php echo esc_html( wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $client['created_at'] ) ); ?></td>
+								<td>
+									<form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=abilities-bridge-settings' ) ); ?>" style="display: inline;">
+										<?php wp_nonce_field( 'abilities_bridge_mcp_revoke_client' ); ?>
+										<input type="hidden" name="client_id" value="<?php echo esc_attr( $client['client_id'] ); ?>">
+										<input type="hidden" name="revoke_client" value="1">
+										<input type="hidden" name="mcp_profile" value="<?php echo esc_attr( self::MCP_PROFILE_CHATGPT ); ?>">
+										<button type="submit" class="button button-small button-link-delete" onclick="return confirm('<?php esc_attr_e( 'Are you sure you want to revoke this client? This will invalidate all tokens and the client will no longer be able to connect.', 'abilities-bridge' ); ?>');"><?php esc_html_e( 'Revoke', 'abilities-bridge' ); ?></button>
+									</form>
+								</td>
+							</tr>
+						<?php endforeach; ?>
+					</tbody>
+				</table>
+			<?php endif; ?>
+		</div>
+		<?php
+	}
+
+	/**
 	 * Render the settings page
 	 */
 	public function render_page() {
@@ -948,7 +1241,7 @@ class Abilities_Bridge_Settings_Page {
 		$requirements = $this->check_requirements();
 
 		// Determine which tab should be active (from URL param, defaults to 'general').
-		$valid_tabs = array( 'general', 'memory', 'mcp-setup', 'about', 'pro', 'learn-more' );
+		$valid_tabs = array( 'general', 'memory', 'anthropic-mcp', 'chatgpt-mcp', 'about', 'pro', 'learn-more' );
 		$active_tab = isset( $_GET['tab'] ) ? sanitize_text_field( wp_unslash( $_GET['tab'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		if ( ! in_array( $active_tab, $valid_tabs, true ) ) {
 			$active_tab = 'general';
@@ -965,12 +1258,13 @@ class Abilities_Bridge_Settings_Page {
 				<?php foreach ( $valid_tabs as $tab_id ) : ?>
 					<?php
 					$tab_labels = array(
-						'general'    => __( 'General', 'abilities-bridge' ),
-						'memory'     => __( 'Memory', 'abilities-bridge' ),
-						'mcp-setup'  => __( 'MCP Setup', 'abilities-bridge' ),
-						'about'      => __( 'About', 'abilities-bridge' ),
-						'pro'        => __( 'Pro Features', 'abilities-bridge' ),
-						'learn-more' => __( 'Learn More', 'abilities-bridge' ),
+						'general'       => __( 'General', 'abilities-bridge' ),
+						'memory'        => __( 'Memory', 'abilities-bridge' ),
+						'anthropic-mcp' => __( 'Anthropic MCP', 'abilities-bridge' ),
+						'chatgpt-mcp'   => __( 'OpenAI ChatGPT MCP', 'abilities-bridge' ),
+						'about'         => __( 'About', 'abilities-bridge' ),
+						'pro'           => __( 'Pro Features', 'abilities-bridge' ),
+						'learn-more'    => __( 'Learn More', 'abilities-bridge' ),
 					);
 					$is_active  = ( $tab_id === $active_tab );
 					$tab_class  = 'nav-tab' . ( $is_active ? ' nav-tab-active' : '' );
@@ -998,9 +1292,9 @@ class Abilities_Bridge_Settings_Page {
 								<td><strong><?php echo esc_html( $req['name'] ); ?></strong></td>
 								<td>
 									<?php if ( $req['status'] ) : ?>
-										<span style="color: green;">✓ <?php esc_html_e( 'OK', 'abilities-bridge' ); ?></span>
+										<span style="color: green;">[OK] <?php esc_html_e( 'OK', 'abilities-bridge' ); ?></span>
 									<?php else : ?>
-										<span style="color: red;">✗ <?php esc_html_e( 'Missing', 'abilities-bridge' ); ?></span>
+										<span style="color: red;">[Missing] <?php esc_html_e( 'Missing', 'abilities-bridge' ); ?></span>
 									<?php endif; ?>
 								</td>
 								<td><?php echo esc_html( $req['details'] ); ?></td>
@@ -1024,9 +1318,14 @@ class Abilities_Bridge_Settings_Page {
 				<?php $this->render_builtin_tools_section(); ?>
 			</div>
 
-			<!-- MCP Setup Tab -->
-			<div class="abilities-bridge-tab-content" id="tab-mcp-setup" style="display: <?php echo 'mcp-setup' === $active_tab ? 'block' : 'none'; ?>;">
+			<!-- Anthropic MCP Tab -->
+			<div class="abilities-bridge-tab-content" id="tab-anthropic-mcp" style="display: <?php echo 'anthropic-mcp' === $active_tab ? 'block' : 'none'; ?>;">
 				<?php $this->render_mcp_section(); ?>
+			</div>
+
+			<!-- OpenAI ChatGPT MCP Tab -->
+			<div class="abilities-bridge-tab-content" id="tab-chatgpt-mcp" style="display: <?php echo 'chatgpt-mcp' === $active_tab ? 'block' : 'none'; ?>;">
+				<?php $this->render_chatgpt_mcp_section(); ?>
 			</div>
 
 			<!-- About Tab -->
@@ -1093,7 +1392,7 @@ class Abilities_Bridge_Settings_Page {
 								<?php esc_html_e( 'Skip the learning curve entirely. Get Abilities Bridge professionally installed on your test and production sites, connected to Claude and OpenAI, plus consultation and ongoing priority support.', 'abilities-bridge' ); ?>
 							</p>
 							<a href="https://aisystemadmin.com/concierge-service/" class="button button-primary" style="font-size: 15px; padding: 8px 24px; height: auto;">
-								<?php esc_html_e( 'Learn More →', 'abilities-bridge' ); ?>
+								<?php esc_html_e( 'Learn More ->', 'abilities-bridge' ); ?>
 							</a>
 						</div>
 
@@ -1106,7 +1405,7 @@ class Abilities_Bridge_Settings_Page {
 								<?php esc_html_e( 'Create and register custom AI abilities for your WordPress site.', 'abilities-bridge' ); ?>
 							</p>
 							<a href="https://aisystemadmin.com/site-abilities/" class="button button-primary" style="font-size: 15px; padding: 8px 24px; height: auto;">
-								<?php esc_html_e( 'Learn More →', 'abilities-bridge' ); ?>
+								<?php esc_html_e( 'Learn More ->', 'abilities-bridge' ); ?>
 							</a>
 						</div>
 
@@ -1214,3 +1513,5 @@ class Abilities_Bridge_Settings_Page {
 		return $requirements;
 	}
 }
+
+

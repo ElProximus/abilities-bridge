@@ -188,8 +188,8 @@
 			var tabId = $(this).data('tab');
 			var currentTab = $('.abilities-bridge-settings-tabs .nav-tab-active').data('tab');
 
-			// Security: Auto-hide credentials when switching away from MCP setup tab
-			if (currentTab === 'mcp-setup' && tabId !== 'mcp-setup') {
+			// Security: Auto-hide credentials when switching away from MCP tabs
+			if ((currentTab === 'anthropic-mcp' || currentTab === 'chatgpt-mcp') && tabId !== currentTab) {
 				var $credentials = $('#generated-credentials');
 				if ($credentials.length && $credentials.data('one-time-view')) {
 					// Fade out and remove credentials container
@@ -455,6 +455,30 @@
 	}
 
 	/**
+	 * WP AI Client Toggle Handler
+	 * Dims API key rows when WP AI Client checkbox is checked
+	 */
+	function initWpAiClientToggle() {
+		var $checkbox = $('#abilities_bridge_use_wp_ai_client');
+
+		if (!$checkbox.length) {
+			return;
+		}
+
+		var $anthropicRow = $('#abilities_bridge_api_key').closest('tr');
+		var $openaiRow = $('#abilities_bridge_openai_api_key').closest('tr');
+
+		function toggleKeyRows() {
+			var opacity = $checkbox.is(':checked') ? 0.5 : 1;
+			$anthropicRow.css('opacity', opacity);
+			$openaiRow.css('opacity', opacity);
+		}
+
+		$checkbox.on('change', toggleKeyRows);
+		toggleKeyRows();
+	}
+
+	/**
 	 * Initialize all handlers on document ready
 	 */
 	$(document).ready(function() {
@@ -467,6 +491,7 @@
 		initOpenAiConnectionTest();
 		initWelcomeWizardConsent();
 		initSecurityTabHandlers();
+		initWpAiClientToggle();
 	});
 
 })(jQuery);

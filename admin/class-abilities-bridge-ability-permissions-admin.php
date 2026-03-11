@@ -470,24 +470,25 @@ class Abilities_Bridge_Ability_Permissions_Admin {
 												<input type="hidden" name="enable" value="1">
 												<button type="submit" class="button button-small button-primary"><?php esc_html_e( 'Enable', 'abilities-bridge' ); ?></button>
 											</form>
-											<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display: inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Are you sure you want to delete this ability?', 'abilities-bridge' ) ); ?>');">
+											<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display: inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Are you sure you want to remove this ability?', 'abilities-bridge' ) ); ?>');">
 												<?php wp_nonce_field( 'abilities_bridge_delete_ability' ); ?>
 												<input type="hidden" name="action" value="abilities_bridge_delete_ability">
 												<input type="hidden" name="ability" value="<?php echo esc_attr( $perm['ability_name'] ); ?>">
-												<button type="submit" class="button button-small button-link-delete"><?php esc_html_e( 'Delete', 'abilities-bridge' ); ?></button>
+												<button type="submit" class="button button-small button-link-delete"><?php esc_html_e( 'Remove', 'abilities-bridge' ); ?></button>
 											</form>
 										<?php endif; ?>
 
 										<?php
 										$edit_url = add_query_arg(
 											array(
-												'page' => 'abilities-bridge-permissions',
-												'tab'  => 'register',
-												'edit' => rawurlencode( $perm['ability_name'] ),
+												'page'        => 'abilities-bridge-permissions',
+												'tab'         => 'register',
+												'edit'        => rawurlencode( $perm['ability_name'] ),
+												'_wpnonce'    => wp_create_nonce( 'abilities_bridge_permissions_nav' ),
+												'_edit_nonce' => wp_create_nonce( 'abilities_bridge_edit_ability' ),
 											),
 											admin_url( 'admin.php' )
 										);
-										$edit_url = wp_nonce_url( $edit_url, 'abilities_bridge_edit_ability', '_wpnonce' );
 										?>
 										<a href="<?php echo esc_url( $edit_url ); ?>" class="button button-small">
 											<?php esc_html_e( 'Edit', 'abilities-bridge' ); ?>
@@ -526,7 +527,7 @@ class Abilities_Bridge_Ability_Permissions_Admin {
 
 		if ( isset( $_GET['edit'] ) ) {
 			// Verify nonce FIRST with generic action (before using any user input).
-			if ( ! isset( $_GET['_wpnonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ), 'abilities_bridge_edit_ability' ) ) {
+			if ( ! isset( $_GET['_edit_nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['_edit_nonce'] ) ), 'abilities_bridge_edit_ability' ) ) {
 				wp_die(
 					esc_html__( 'Security verification failed. This edit link may have expired or is invalid. Please return to the permissions list and try again.', 'abilities-bridge' ),
 					esc_html__( 'Security Check Failed', 'abilities-bridge' ),
