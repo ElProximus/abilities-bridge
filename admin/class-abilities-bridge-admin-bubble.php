@@ -205,6 +205,7 @@ class Abilities_Bridge_Admin_Bubble {
 						<select id="abilities-bridge-bubble-model"></select>
 					</div>
 				</div>
+				<div id="abilities-bridge-bubble-model-guidance" class="abilities-bridge-bubble-model-guidance"></div>
 
 				<div class="abilities-bridge-bubble-conversations">
 					<label for="abilities-bridge-bubble-conversation-select"><?php esc_html_e( 'Saved Conversations', 'abilities-bridge' ); ?></label>

@@ -44,9 +44,9 @@ class Abilities_Bridge_Memory_Functions {
 		// Normalize path separators.
 		$path = str_replace( '\\', '/', $path );
 
-		// Ensure path starts with /memories.
-		if ( strpos( $path, '/memories' ) !== 0 ) {
-			return new WP_Error( 'invalid_path', 'Path must start with /memories' );
+		// Ensure path is inside the /memories namespace.
+		if ( '/memories' !== $path && 0 !== strpos( $path, '/memories/' ) ) {
+			return new WP_Error( 'invalid_path', 'Path must start with /memories/' );
 		}
 
 		// Remove /memories prefix for internal use.

@@ -1,0 +1,405 @@
+/**
+ * Integrations page styles.
+ *
+ * @package Abilities_Bridge
+ * @since   1.2.0
+ */
+
+/* Page wrapper */
+.ab-integrations-wrap {
+	max-width: 900px;
+}
+
+.ab-integrations-wrap h1 {
+	font-size: 23px;
+	font-weight: 400;
+	margin-bottom: 4px;
+}
+
+.ab-page-description {
+	color: #646970;
+	font-size: 13px;
+	margin-top: 0;
+	margin-bottom: 24px;
+}
+
+/* Notification bar */
+.ab-notification {
+	padding: 10px 16px;
+	margin-bottom: 16px;
+	border-radius: 4px;
+	font-size: 13px;
+	line-height: 1.5;
+	animation: ab-notification-fade-in 0.3s ease;
+}
+
+.ab-notification.ab-notification-success {
+	background: #edf7ed;
+	border-left: 4px solid #00a32a;
+	color: #1e4620;
+}
+
+.ab-notification.ab-notification-error {
+	background: #fcf0f1;
+	border-left: 4px solid #d63638;
+	color: #8a1f1f;
+}
+
+@keyframes ab-notification-fade-in {
+	from {
+		opacity: 0;
+		transform: translateY(-8px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+/* Empty state */
+.ab-empty-state {
+	text-align: center;
+	padding: 60px 20px;
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	margin-top: 20px;
+}
+
+.ab-empty-state .dashicons {
+	font-size: 48px;
+	width: 48px;
+	height: 48px;
+	color: #c3c4c7;
+	margin-bottom: 16px;
+}
+
+.ab-empty-state h2 {
+	font-size: 18px;
+	font-weight: 400;
+	color: #1d2327;
+	margin-bottom: 8px;
+}
+
+.ab-empty-state p {
+	color: #646970;
+	font-size: 13px;
+	max-width: 400px;
+	margin: 0 auto;
+}
+
+/* Plugin card */
+.ab-plugin-card {
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+	margin-bottom: 16px;
+	overflow: hidden;
+}
+
+/* Plugin header */
+.ab-plugin-header {
+	display: flex;
+	align-items: flex-start;
+	padding: 20px;
+	gap: 16px;
+}
+
+.ab-plugin-icon {
+	flex: 0 0 48px;
+	width: 48px;
+	height: 48px;
+	background: #f0f0f1;
+	border-radius: 8px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.ab-plugin-icon .dashicons {
+	font-size: 24px;
+	width: 24px;
+	height: 24px;
+	color: #2271b1;
+}
+
+.ab-plugin-meta {
+	flex: 1;
+	min-width: 0;
+}
+
+.ab-plugin-name {
+	font-size: 16px;
+	font-weight: 600;
+	margin: 0 0 4px;
+	color: #1d2327;
+	line-height: 1.4;
+}
+
+.ab-plugin-version {
+	font-size: 12px;
+	font-weight: 400;
+	color: #8c8f94;
+	margin-left: 8px;
+}
+
+.ab-plugin-description {
+	color: #646970;
+	font-size: 13px;
+	margin: 0;
+	line-height: 1.5;
+}
+
+.ab-plugin-status {
+	flex: 0 0 auto;
+	text-align: right;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 6px;
+}
+
+.ab-ability-count {
+	font-size: 12px;
+	color: #8c8f94;
+}
+
+/* Status badges */
+.ab-status-badge {
+	display: inline-block;
+	padding: 3px 10px;
+	border-radius: 12px;
+	font-size: 12px;
+	font-weight: 500;
+	line-height: 1.4;
+	white-space: nowrap;
+}
+
+.ab-status-available {
+	background: #f0f0f1;
+	color: #646970;
+}
+
+.ab-status-approved {
+	background: #edf7ed;
+	color: #1e4620;
+}
+
+.ab-status-partial {
+	background: #fcf0e8;
+	color: #8a4e00;
+}
+
+/* Toggle abilities button */
+.ab-plugin-body {
+	border-top: 1px solid #f0f0f1;
+	padding: 0 20px;
+}
+
+.ab-toggle-abilities {
+	background: none;
+	border: none;
+	color: #2271b1;
+	cursor: pointer;
+	font-size: 13px;
+	padding: 12px 0;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	width: 100%;
+	text-align: left;
+}
+
+.ab-toggle-abilities:hover {
+	color: #135e96;
+}
+
+.ab-toggle-abilities:focus {
+	outline: 1px dotted #2271b1;
+	outline-offset: 2px;
+}
+
+.ab-toggle-abilities .dashicons {
+	font-size: 16px;
+	width: 16px;
+	height: 16px;
+	transition: transform 0.2s ease;
+}
+
+.ab-toggle-abilities[aria-expanded="true"] .dashicons {
+	transform: rotate(180deg);
+}
+
+/* Abilities table */
+.ab-abilities-body {
+	padding-bottom: 12px;
+}
+
+.ab-abilities-table {
+	border: 1px solid #e0e0e0;
+	border-radius: 4px;
+	border-collapse: collapse;
+}
+
+.ab-abilities-table thead th {
+	background: #f6f7f7;
+	font-size: 12px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	color: #646970;
+	padding: 8px 12px;
+	border-bottom: 1px solid #e0e0e0;
+}
+
+.ab-abilities-table tbody tr {
+	border-bottom: 1px solid #f0f0f1;
+}
+
+.ab-abilities-table tbody tr:last-child {
+	border-bottom: none;
+}
+
+.ab-abilities-table tbody td {
+	padding: 10px 12px;
+	font-size: 13px;
+	vertical-align: middle;
+}
+
+.ab-col-status {
+	width: 50px;
+	text-align: center;
+}
+
+.ab-col-name {
+	width: 260px;
+}
+
+.ab-col-name code {
+	font-size: 12px;
+	background: #f6f7f7;
+	padding: 2px 6px;
+	border-radius: 3px;
+	color: #1d2327;
+}
+
+.ab-col-description {
+	color: #646970;
+	line-height: 1.4;
+}
+
+.ab-col-risk {
+	width: 80px;
+	text-align: center;
+}
+
+/* Approved checkmark */
+.ab-approved-check {
+	color: #00a32a;
+	font-size: 16px;
+	font-weight: 700;
+}
+
+.ab-pending-dash {
+	color: #c3c4c7;
+	font-size: 16px;
+}
+
+/* Risk badges */
+.ab-risk-badge {
+	display: inline-block;
+	padding: 2px 8px;
+	border-radius: 3px;
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.3px;
+}
+
+.ab-risk-low {
+	background: #edf7ed;
+	color: #1e7e34;
+}
+
+.ab-risk-medium {
+	background: #fff8e5;
+	color: #996800;
+}
+
+.ab-risk-high {
+	background: #fcf0f1;
+	color: #cc1818;
+}
+
+/* Action buttons */
+.ab-actions {
+	display: flex;
+	gap: 8px;
+	padding: 16px 20px;
+	border-top: 1px solid #f0f0f1;
+	background: #f9f9f9;
+}
+
+.ab-btn-approve {
+	background: #00a32a;
+	border-color: #00a32a;
+	color: #fff;
+}
+
+.ab-btn-approve:hover,
+.ab-btn-approve:focus {
+	background: #008a20;
+	border-color: #008a20;
+	color: #fff;
+}
+
+.ab-btn-approve:disabled {
+	background: #a7d8a7;
+	border-color: #a7d8a7;
+	color: #fff;
+	cursor: not-allowed;
+}
+
+.ab-btn-revoke {
+	background: transparent;
+	border-color: #d63638;
+	color: #d63638;
+}
+
+.ab-btn-revoke:hover,
+.ab-btn-revoke:focus {
+	background: #fcf0f1;
+	border-color: #d63638;
+	color: #d63638;
+}
+
+.ab-btn-revoke:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+/* Responsive adjustments */
+@media screen and (max-width: 782px) {
+	.ab-plugin-header {
+		flex-wrap: wrap;
+	}
+
+	.ab-plugin-status {
+		flex-basis: 100%;
+		align-items: flex-start;
+		margin-top: 8px;
+	}
+
+	.ab-col-name {
+		width: auto;
+	}
+
+	.ab-abilities-table {
+		font-size: 12px;
+	}
+
+	.ab-col-description {
+		display: none;
+	}
+}

@@ -117,7 +117,8 @@ $abilities_bridge_requested_scopes = ! empty( $scope ) ? explode( ' ', $scope ) 
 			</div>
 
 			<form method="post" action="<?php echo esc_url( rest_url( 'abilities-bridge-mcp/v1/authorize' ) ); ?>">
-				<?php wp_nonce_field( 'abilities_bridge_oauth_authorize', 'oauth_nonce' ); ?>
+				<?php wp_nonce_field( 'abilities_bridge_oauth_consent_' . $consent_token, 'oauth_nonce' ); ?>
+				<input type="hidden" name="consent_token" value="<?php echo esc_attr( $consent_token ); ?>">
 				<input type="hidden" name="client_id" value="<?php echo esc_attr( $client_id ); ?>">
 				<input type="hidden" name="redirect_uri" value="<?php echo esc_attr( $redirect_uri ); ?>">
 				<input type="hidden" name="response_type" value="<?php echo esc_attr( $response_type ); ?>">

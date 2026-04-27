@@ -23,6 +23,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 		$abilities_bridge_provider_label   = Abilities_Bridge_AI_Provider::get_provider_label( $abilities_bridge_selected_provider );
 		$abilities_bridge_available_models = Abilities_Bridge_AI_Provider::get_available_models( $abilities_bridge_selected_provider );
 		$abilities_bridge_selected_model   = Abilities_Bridge_AI_Provider::get_selected_model( $abilities_bridge_selected_provider );
+		$abilities_bridge_model_guidance   = Abilities_Bridge_AI_Provider::get_model_guidance( $abilities_bridge_selected_model, $abilities_bridge_selected_provider );
 		?>
 
 		<div class="abilities-bridge-model-selector" style="margin-bottom: 12px;">
@@ -53,7 +54,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 				<?php endforeach; ?>
 			</select>
 			<p class="abilities-bridge-model-info" style="margin-top: 10px; font-size: 12px; color: #666;">
-				<span id="abilities-bridge-model-description"></span>
+				<span id="abilities-bridge-model-description"><?php echo esc_html( $abilities_bridge_model_guidance ); ?></span>
 				<span class="abilities-bridge-model-provider">
 					<?php echo esc_html( ' · ' . $abilities_bridge_provider_label ); ?>
 				</span>

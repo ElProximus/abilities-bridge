@@ -4,7 +4,7 @@ Tags: ai, claude, openai, mcp, abilities
 Requires at least: 6.2
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.2.0
+Stable tag: 1.2.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -13,7 +13,7 @@ MCP server for WordPress. Connect Claude AI or OpenAI to execute WordPress Abili
 
 == Description ==
 
-**Making Connections Possible** | Now with support for ChatGPT 5.4 and Custom Apps in ChatGPT
+**Making Connections Possible** | Now with support for Claude Opus 4.7, GPT-5.5, and Custom Apps in ChatGPT
 
 Abilities Bridge connects AI to your WordPress site. Use the built-in admin chat, connect via MCP to Claude Desktop, or integrate with other MCP-compatible applications. Supports both Anthropic (Claude) and OpenAI models.
 
@@ -128,6 +128,16 @@ AI-callable WordPress functions (creating posts, managing users, etc.) that must
 6. Ability permissions list with core read-only abilities and authorized abilities
 
 == Changelog ==
+
+= 1.2.1 =
+* Added Claude Opus 4.7 model support (most intelligent option)
+* Added GPT-5.5 model support (now the default OpenAI option)
+* Added Connected Plugins admin page for discovering and approving Abilities Bridge integrations
+* Added per-model guidance text in the chat bubble and dashboard
+* Conversation lookup, delete, and restore are now scoped to the current user — admins can no longer access other admins' conversations by ID
+* OAuth consent now uses request-bound, single-use consent tokens with 5-minute transients
+* Memory tool path validator no longer accepts paths sharing the /memories prefix but living outside the namespace (e.g. /memoriesXYZ)
+* Default OpenAI model updated from GPT-5.4 to GPT-5.5
 
 = 1.2.0 =
 * Added WP AI Client credential integration for shared API keys via WordPress Connectors

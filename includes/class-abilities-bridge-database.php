@@ -451,19 +451,30 @@ class Abilities_Bridge_Database {
 	/**
 	 * Get a conversation by ID
 	 *
-	 * @param int $conversation_id Conversation ID.
+	 * @param int  $conversation_id Conversation ID.
+	 * @param int  $user_id User ID to scope the lookup to.
+	 * @param bool $include_deleted Whether soft-deleted conversations should be included.
 	 * @return object|null
 	 */
-	public static function get_conversation( $conversation_id ) {
+	public static function get_conversation( $conversation_id, $user_id = 0, $include_deleted = false ) {
 		global $wpdb;
 
-		return $wpdb->get_row(
-			$wpdb->prepare(
-				'SELECT * FROM %i WHERE id = %d',
-				self::table( self::TABLE_CONVERSATIONS ),
-				$conversation_id
-			)
+		$query  = 'SELECT * FROM %i WHERE id = %d';
+		$params = array(
+			self::table( self::TABLE_CONVERSATIONS ),
+			$conversation_id,
 		);
+
+		if ( $user_id > 0 ) {
+			$query    .= ' AND user_id = %d';
+			$params[] = $user_id;
+		}
+
+		if ( ! $include_deleted ) {
+			$query .= ' AND deleted_at IS NULL';
+		}
+
+		return $wpdb->get_row( $wpdb->prepare( $query, ...$params ) );
 	}
 
 	/**
@@ -501,10 +512,17 @@ class Abilities_Bridge_Database {
 	 * Soft delete a conversation (archives for 30 days)
 	 *
 	 * @param int $conversation_id Conversation ID.
+	 * @param int $user_id User ID to scope the delete to.
 	 * @return bool
 	 */
-	public static function delete_conversation( $conversation_id ) {
+	public static function delete_conversation( $conversation_id, $user_id = 0 ) {
 		global $wpdb;
+
+		$where = array( 'id' => $conversation_id );
+
+		if ( $user_id > 0 ) {
+			$where['user_id'] = $user_id;
+		}
 
 		// Soft delete: Set deleted_at timestamp and deleted_by_user_id.
 		$result = $wpdb->update(
@@ -513,22 +531,29 @@ class Abilities_Bridge_Database {
 				'deleted_at'         => current_time( 'mysql' ),
 				'deleted_by_user_id' => get_current_user_id(),
 			),
-			array( 'id' => $conversation_id ),
+			$where,
 			array( '%s', '%d' ),
-			array( '%d' )
+			array_fill( 0, count( $where ), '%d' )
 		);
 
-		return false !== $result;
+		return false !== $result && $result > 0;
 	}
 
 	/**
 	 * Restore a soft-deleted conversation
 	 *
 	 * @param int $conversation_id Conversation ID.
+	 * @param int $user_id User ID to scope the restore to.
 	 * @return bool
 	 */
-	public static function restore_conversation( $conversation_id ) {
+	public static function restore_conversation( $conversation_id, $user_id = 0 ) {
 		global $wpdb;
+
+		$where = array( 'id' => $conversation_id );
+
+		if ( $user_id > 0 ) {
+			$where['user_id'] = $user_id;
+		}
 
 		// Clear deleted_at and deleted_by_user_id to restore.
 		$result = $wpdb->update(
@@ -537,22 +562,29 @@ class Abilities_Bridge_Database {
 				'deleted_at'         => null,
 				'deleted_by_user_id' => null,
 			),
-			array( 'id' => $conversation_id ),
+			$where,
 			array( '%s', '%d' ),
-			array( '%d' )
+			array_fill( 0, count( $where ), '%d' )
 		);
 
-		return false !== $result;
+		return false !== $result && $result > 0;
 	}
 
 	/**
 	 * Permanently delete a conversation and all its messages and logs
 	 *
 	 * @param int $conversation_id Conversation ID.
+	 * @param int $user_id User ID to scope the delete to.
 	 * @return bool
 	 */
-	public static function permanently_delete_conversation( $conversation_id ) {
+	public static function permanently_delete_conversation( $conversation_id, $user_id = 0 ) {
 		global $wpdb;
+
+		$conversation = self::get_conversation( $conversation_id, $user_id, true );
+
+		if ( ! $conversation ) {
+			return false;
+		}
 
 		// Hard delete messages.
 		$wpdb->delete( self::table( self::TABLE_MESSAGES ), array( 'conversation_id' => $conversation_id ), array( '%d' ) );

@@ -19,6 +19,21 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Abilities_Bridge_Activity_Log_Page {
 
 	/**
+	 * Get an accessible conversation for the current admin.
+	 *
+	 * @param int  $conversation_id Conversation ID.
+	 * @param bool $include_deleted Whether soft-deleted conversations should be included.
+	 * @return object|null
+	 */
+	private static function get_accessible_conversation( $conversation_id, $include_deleted = false ) {
+		return Abilities_Bridge_Database::get_conversation(
+			(int) $conversation_id,
+			get_current_user_id(),
+			$include_deleted
+		);
+	}
+
+	/**
 	 * Initialize the activity log page
 	 */
 	public static function init() {
@@ -757,7 +772,11 @@ class Abilities_Bridge_Activity_Log_Page {
 			wp_send_json_error( array( 'message' => 'Invalid conversation ID' ) );
 		}
 
-		$result = Abilities_Bridge_Database::restore_conversation( $conversation_id );
+		if ( ! self::get_accessible_conversation( $conversation_id, true ) ) {
+			wp_send_json_error( array( 'message' => 'Conversation not found' ) );
+		}
+
+		$result = Abilities_Bridge_Database::restore_conversation( $conversation_id, get_current_user_id() );
 
 		if ( $result ) {
 			wp_send_json_success( array( 'message' => 'Conversation restored successfully' ) );
@@ -782,7 +801,11 @@ class Abilities_Bridge_Activity_Log_Page {
 			wp_send_json_error( array( 'message' => 'Invalid conversation ID' ) );
 		}
 
-		$result = Abilities_Bridge_Database::permanently_delete_conversation( $conversation_id );
+		if ( ! self::get_accessible_conversation( $conversation_id, true ) ) {
+			wp_send_json_error( array( 'message' => 'Conversation not found' ) );
+		}
+
+		$result = Abilities_Bridge_Database::permanently_delete_conversation( $conversation_id, get_current_user_id() );
 
 		if ( $result ) {
 			wp_send_json_success( array( 'message' => 'Conversation permanently deleted' ) );

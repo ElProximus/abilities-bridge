@@ -51,6 +51,7 @@ class Abilities_Bridge_OpenAI_API {
 	 */
 	public static function get_available_models() {
 		return array(
+			'gpt-5.5' => 'GPT-5.5 (Recommended)',
 			'gpt-5.4' => 'GPT-5.4',
 			'gpt-5.2' => 'GPT-5.2',
 			'gpt-5.1' => 'GPT-5.1',
@@ -66,6 +67,7 @@ class Abilities_Bridge_OpenAI_API {
 	 */
 	public static function normalize_model( $model ) {
 		$aliases = array(
+			'gpt-5.5-chat-latest' => 'gpt-5.5',
 			'gpt-5.2-chat-latest' => 'gpt-5.2',
 			'gpt-5-chat-latest'   => 'gpt-5',
 			'gpt-5.1-chat-latest' => 'gpt-5.1',
@@ -80,7 +82,7 @@ class Abilities_Bridge_OpenAI_API {
 	 * @return string
 	 */
 	public static function get_default_model() {
-		return 'gpt-5.4';
+		return 'gpt-5.5';
 	}
 
 	/**

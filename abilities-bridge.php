@@ -3,7 +3,7 @@
  * Plugin Name: Abilities Bridge
  * Plugin URI: https://aisystemadmin.com/abilities-bridge/
  * Description: MCP server for WordPress with admin interface. Connect Claude AI or OpenAI to execute WordPress Abilities with configurable permissions, activity monitoring, memory storage, and OAuth 2.0 authentication.
- * Version: 1.2.0
+ * Version: 1.2.1
  * Author: Joe Campbell
  * Author URI: https://aisystemadmin.com.
  * License: GPL v2 or later

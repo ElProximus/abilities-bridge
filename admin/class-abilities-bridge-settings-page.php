@@ -428,8 +428,9 @@ class Abilities_Bridge_Settings_Page {
 	 * Render OpenAI API key field
 	 */
 	public function render_openai_api_key_field() {
-		$api_key = get_option( 'abilities_bridge_openai_api_key', '' );
-		$model   = Abilities_Bridge_AI_Provider::get_selected_model( Abilities_Bridge_AI_Provider::PROVIDER_OPENAI );
+		$api_key        = get_option( 'abilities_bridge_openai_api_key', '' );
+		$model          = Abilities_Bridge_AI_Provider::get_selected_model( Abilities_Bridge_AI_Provider::PROVIDER_OPENAI );
+		$model_guidance = Abilities_Bridge_AI_Provider::get_model_guidance( $model, Abilities_Bridge_AI_Provider::PROVIDER_OPENAI );
 		?>
 		<input
 			type="password"
@@ -456,6 +457,9 @@ class Abilities_Bridge_Settings_Page {
 				'<code>' . esc_html( $model ) . '</code>'
 			);
 			?>
+		</p>
+		<p class="description">
+			<?php echo esc_html( $model_guidance ); ?>
 		</p>
 
 		<!-- API Key Consent Checkboxes -->

@@ -229,6 +229,28 @@ class Abilities_Bridge_AI_Provider {
 	}
 
 	/**
+	 * Get short admin guidance for a model.
+	 *
+	 * @param string|null $model Model identifier.
+	 * @param string|null $provider Provider key.
+	 * @return string
+	 */
+	public static function get_model_guidance( $model = null, $provider = null ) {
+		$provider = $provider ? $provider : self::get_current_provider();
+		$model    = $model ? self::normalize_model_for_provider( $model, $provider ) : self::get_selected_model( $provider );
+
+		if ( self::PROVIDER_OPENAI === $provider && 'gpt-5.5' === $model ) {
+			return __( 'GPT-5.5 is best for advanced coding, agentic WordPress work, complex integrations, and large-context analysis. Start a new conversation after switching models.', 'abilities-bridge' );
+		}
+
+		if ( self::PROVIDER_OPENAI === $provider ) {
+			return __( 'OpenAI models use the Responses API with the configured system prompt and approved tools. Start a new conversation after switching models.', 'abilities-bridge' );
+		}
+
+		return __( 'Claude models use the configured system prompt and approved tools. Start a new conversation after switching models.', 'abilities-bridge' );
+	}
+
+	/**
 	 * Get provider default model.
 	 *
 	 * @param string|null $provider Provider key.

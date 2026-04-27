@@ -57,8 +57,12 @@ class Abilities_Bridge_Conversation {
 		$this->message_processor = $message_processor ?? new Abilities_Bridge_Message_Processor();
 
 		if ( $conversation_id ) {
-			$this->conversation_id = $conversation_id;
-			$this->load_messages();
+			$conversation = Abilities_Bridge_Database::get_conversation( $conversation_id, $this->user_id );
+
+			if ( $conversation ) {
+				$this->conversation_id = $conversation_id;
+				$this->load_messages();
+			}
 		}
 	}
 
@@ -236,7 +240,7 @@ class Abilities_Bridge_Conversation {
 		// Get model from conversation or use current setting.
 		$model = null;
 		if ( $this->conversation_id ) {
-			$conversation = Abilities_Bridge_Database::get_conversation( $this->conversation_id );
+			$conversation = Abilities_Bridge_Database::get_conversation( $this->conversation_id, $this->user_id );
 			if ( $conversation ) {
 				if ( ! empty( $conversation->provider ) ) {
 					$provider = $conversation->provider;

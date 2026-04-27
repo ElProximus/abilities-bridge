@@ -20,6 +20,7 @@
 		status: '#abilities-bridge-bubble-status',
 		provider: '#abilities-bridge-bubble-provider',
 		model: '#abilities-bridge-bubble-model',
+		modelGuidance: '#abilities-bridge-bubble-model-guidance',
 		conversationSelect: '#abilities-bridge-bubble-conversation-select',
 		newConversation: '#abilities-bridge-bubble-new',
 		messages: '#abilities-bridge-bubble-messages',
@@ -314,6 +315,7 @@
 
 			updateProviderOptions(response.data.provider);
 			updateModelOptions(response.data.available_models || {}, response.data.model);
+			updateModelGuidance(response.data.model_guidance || '');
 			setStatus(abilitiesBridgeBubbleData.i18n.providerChanged);
 			handleNewConversation(true);
 		}).fail(function() {
@@ -342,6 +344,7 @@
 			}
 
 			setStatus(abilitiesBridgeBubbleData.i18n.modelChanged);
+			updateModelGuidance(response.data.model_guidance || '');
 			handleNewConversation(true);
 		}).fail(function() {
 			handleError(abilitiesBridgeBubbleData.i18n.connectionError);
@@ -363,6 +366,7 @@
 
 			updateProviderOptions(response.data.provider);
 			updateModelOptions(response.data.available_models || {}, response.data.model);
+			updateModelGuidance(response.data.model_guidance || '');
 			setStatus(`Using ${response.data.model_name}`);
 		}).fail(function() {
 			setStatus(abilitiesBridgeBubbleData.i18n.loadProviderFailed || 'Unable to load provider settings.');
@@ -397,6 +401,7 @@
 
 			updateProviderOptions(response.data.provider);
 			updateModelOptions(response.data.available_models || {}, conversation.model || response.data.model);
+			updateModelGuidance(response.data.model_guidance || '');
 			setStatus(`Using ${$(selectors.model).find('option:selected').text() || response.data.model_name}`);
 		});
 	}
@@ -423,6 +428,10 @@
 			const selected = modelId === selectedModel ? ' selected' : '';
 			$select.append(`<option value="${escapeAttribute(modelId)}"${selected}>${escapeHtml(models[modelId])}</option>`);
 		});
+	}
+
+	function updateModelGuidance(guidance) {
+		$(selectors.modelGuidance).text(guidance || '');
 	}
 
 	function updateTokenMeter() {

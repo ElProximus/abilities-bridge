@@ -5,6 +5,27 @@ All notable changes to Abilities Bridge will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-04-27
+
+### Added
+- Claude Opus 4.7 model support (now the most intelligent option in the model dropdown)
+- GPT-5.5 model support (now the recommended OpenAI option)
+- Connected Plugins admin page — discover and approve plugins that register Abilities Bridge integrations via the `abilities_bridge_plugin_integrations` filter
+- Per-model guidance text shown beneath the model selector in both the floating chat bubble and the dashboard
+
+### Changed
+- Default OpenAI model updated from GPT-5.4 to GPT-5.5
+- OAuth consent flow now uses request-bound consent tokens stored in 5-minute transients; nonces are tied to each specific authorization request and the token is consumed once on success
+- Conversation lookup, delete, and restore operations are now scoped to the current user
+
+### Fixed
+- Memory tool path validator no longer accepts paths sharing the `/memories` prefix but living outside the namespace (e.g. `/memoriesXYZ`)
+- Conversation constructor now verifies the row exists and belongs to the current user before loading messages
+
+### Security
+- Closed a cross-user-access issue where any admin could view, delete, or restore another admin's conversation by guessing the conversation ID
+- OAuth consent tokens are now single-use and request-bound, eliminating replay of captured consent forms
+
 ## [1.2.0] - 2026-03-10
 
 ### Added

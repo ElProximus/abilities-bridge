@@ -147,7 +147,13 @@ class Abilities_Bridge_OAuth_Authorization_Handler {
 		// User is already authenticated (admin page requires login).
 		// No need to check is_user_logged_in() - WordPress admin handles this.
 
+		// Generate a unique consent token tied to this specific authorization request.
+		$consent_token = wp_generate_password( 32, false );
+		set_transient( 'ab_consent_' . $consent_token, $oauth_params, 300 ); // 5 minutes.
+
 		// Include consent screen template.
+		// Template receives: $client_id, $redirect_uri, $response_type, $code_challenge,
+		// $code_challenge_method, $state, $scope, $consent_token.
 		include ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/oauth-consent-screen.php';
 	}
 
@@ -271,12 +277,30 @@ class Abilities_Bridge_OAuth_Authorization_Handler {
 			);
 		}
 
-		// Verify nonce - check if this is coming from our consent form.
-		// Use get_param() to retrieve from HTML form POST (matches old working code).
-		$nonce = $request->get_param( 'oauth_nonce' );
+		// Verify request-specific nonce tied to the consent token.
+		$consent_token = sanitize_text_field( $request->get_param( 'consent_token' ) );
+		$nonce         = $request->get_param( 'oauth_nonce' );
 
-		// Verify the nonce is valid.
-		$nonce_valid = wp_verify_nonce( $nonce, 'abilities_bridge_oauth_authorize' );
+		if ( empty( $consent_token ) ) {
+			$logger->log(
+				'nonce_verification_failed',
+				Abilities_Bridge_OAuth_Logger::LEVEL_WARNING,
+				array(
+					'user_id' => get_current_user_id(),
+					'reason'  => 'missing_consent_token',
+				)
+			);
+
+			wp_die(
+				esc_html__( 'Security verification failed. Missing consent token. Please try authorizing again.', 'abilities-bridge' ) .
+				'<br><br><a href="' . esc_url( admin_url( 'admin.php?page=abilities-bridge-settings' ) ) . '">' .
+				esc_html__( 'Return to Settings', 'abilities-bridge' ) . '</a>',
+				esc_html__( 'Security Error', 'abilities-bridge' ),
+				array( 'response' => 403 )
+			);
+		}
+
+		$nonce_valid = wp_verify_nonce( $nonce, 'abilities_bridge_oauth_consent_' . $consent_token );
 
 		if ( ! $nonce_valid ) {
 			// Log the failure for debugging.
@@ -287,6 +311,7 @@ class Abilities_Bridge_OAuth_Authorization_Handler {
 					'user_id'            => get_current_user_id(),
 					'nonce_present'      => ! empty( $nonce ),
 					'nonce_value_length' => strlen( $nonce ),
+					'consent_token'      => ! empty( $consent_token ),
 				)
 			);
 
@@ -299,13 +324,35 @@ class Abilities_Bridge_OAuth_Authorization_Handler {
 			);
 		}
 
-		// Get parameters using get_param() to support HTML form POST (matches old working code).
-		$client_id             = $request->get_param( 'client_id' );
-		$redirect_uri          = $request->get_param( 'redirect_uri' );
-		$code_challenge        = $request->get_param( 'code_challenge' );
-		$code_challenge_method = $request->get_param( 'code_challenge_method' );
-		$state                 = $request->get_param( 'state' );
-		$scope                 = $request->get_param( 'scope' );
+		// Retrieve and validate the original OAuth params from the consent transient.
+		$oauth_params = get_transient( 'ab_consent_' . $consent_token );
+		if ( ! $oauth_params || ! is_array( $oauth_params ) ) {
+			$logger->log(
+				'consent_transient_expired',
+				Abilities_Bridge_OAuth_Logger::LEVEL_WARNING,
+				array(
+					'user_id'       => get_current_user_id(),
+					'consent_token' => ! empty( $consent_token ),
+				)
+			);
+
+			wp_die(
+				esc_html__( 'Authorization request has expired. Please start the authorization process again.', 'abilities-bridge' ) .
+				'<br><br><a href="' . esc_url( admin_url( 'admin.php?page=abilities-bridge-settings' ) ) . '">' .
+				esc_html__( 'Return to Settings', 'abilities-bridge' ) . '</a>',
+				esc_html__( 'Authorization Expired', 'abilities-bridge' ),
+				array( 'response' => 400 )
+			);
+		}
+		delete_transient( 'ab_consent_' . $consent_token );
+
+		// Use OAuth params from the server-side transient (not from POST data).
+		$client_id             = $oauth_params['client_id'] ?? '';
+		$redirect_uri          = $oauth_params['redirect_uri'] ?? '';
+		$code_challenge        = $oauth_params['code_challenge'] ?? '';
+		$code_challenge_method = $oauth_params['code_challenge_method'] ?? '';
+		$state                 = $oauth_params['state'] ?? '';
+		$scope                 = $oauth_params['scope'] ?? '';
 		$approved              = $request->get_param( 'approved' );
 
 		// Debug: Log extracted parameter values.
@@ -319,6 +366,7 @@ class Abilities_Bridge_OAuth_Authorization_Handler {
 				'code_challenge_method' => $code_challenge_method,
 				'approved'              => $approved,
 				'user_id'               => get_current_user_id(),
+				'source'                => 'consent_transient',
 			)
 		);
 

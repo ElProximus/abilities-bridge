@@ -57,7 +57,7 @@ class Abilities_Bridge_Message_Processor {
 		$previous_response_id = '';
 
 		if ( $conversation_id ) {
-			$conversation_data = Abilities_Bridge_Database::get_conversation( $conversation_id );
+			$conversation_data = Abilities_Bridge_Database::get_conversation( $conversation_id, get_current_user_id() );
 			if ( $conversation_data ) {
 				if ( ! empty( $conversation_data->provider ) ) {
 					$provider = $conversation_data->provider;

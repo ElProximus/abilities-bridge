@@ -61,6 +61,7 @@ class Abilities_Bridge {
 			require_once ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/class-abilities-bridge-admin-page.php';
 			require_once ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/class-abilities-bridge-settings-page.php';
 			require_once ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/class-abilities-bridge-activity-log-page.php';
+			require_once ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/class-abilities-bridge-integrations-page.php';
 			if ( defined( 'ABILITIES_BRIDGE_DEV' ) && ABILITIES_BRIDGE_DEV ) {
 				require_once ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/class-abilities-bridge-chatgpt-mcp-test-page.php';
 				require_once ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/class-abilities-bridge-wp-ai-client-test-page.php';
@@ -101,6 +102,8 @@ class Abilities_Bridge {
 
 			Abilities_Bridge_Activity_Log_Page::init();
 
+			Abilities_Bridge_Integrations_Page::init();
+
 			if ( defined( 'ABILITIES_BRIDGE_DEV' ) && ABILITIES_BRIDGE_DEV ) {
 				$chatgpt_mcp_test_page = new Abilities_Bridge_ChatGPT_MCP_Test_Page();
 				$chatgpt_mcp_test_page->init();
@@ -136,6 +139,5 @@ class Abilities_Bridge {
 		return array_merge( $plugin_links, $links );
 	}
 }
-
 
 

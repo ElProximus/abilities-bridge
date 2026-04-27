@@ -19,6 +19,21 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Abilities_Bridge_Admin_Page {
 
 	/**
+	 * Get an accessible conversation for the current admin.
+	 *
+	 * @param int  $conversation_id Conversation ID.
+	 * @param bool $include_deleted Whether soft-deleted conversations should be included.
+	 * @return object|null
+	 */
+	private function get_accessible_conversation( $conversation_id, $include_deleted = false ) {
+		return Abilities_Bridge_Database::get_conversation(
+			(int) $conversation_id,
+			get_current_user_id(),
+			$include_deleted
+		);
+	}
+
+	/**
 	 * Initialize the admin page
 	 */
 	public function init() {
@@ -231,6 +246,10 @@ class Abilities_Bridge_Admin_Page {
 			wp_send_json_error( array( 'message' => 'Message too long (max 10,000 characters)' ) );
 		}
 
+		if ( $conversation_id && ! $this->get_accessible_conversation( $conversation_id ) ) {
+			wp_send_json_error( array( 'message' => 'Conversation not found' ) );
+		}
+
 		// Load or create conversation.
 		$conversation = new Abilities_Bridge_Conversation( $conversation_id );
 
@@ -360,7 +379,7 @@ class Abilities_Bridge_Admin_Page {
 			wp_send_json_error( array( 'message' => 'Invalid conversation ID' ) );
 		}
 
-		$conversation = Abilities_Bridge_Database::get_conversation( $conversation_id );
+		$conversation = $this->get_accessible_conversation( $conversation_id );
 
 		if ( ! $conversation ) {
 			wp_send_json_error( array( 'message' => 'Conversation not found' ) );
@@ -456,7 +475,13 @@ class Abilities_Bridge_Admin_Page {
 			wp_send_json_error( array( 'message' => 'Invalid conversation ID' ) );
 		}
 
-		$result = Abilities_Bridge_Database::delete_conversation( $conversation_id );
+		$conversation = $this->get_accessible_conversation( $conversation_id );
+
+		if ( ! $conversation ) {
+			wp_send_json_error( array( 'message' => 'Conversation not found' ) );
+		}
+
+		$result = Abilities_Bridge_Database::delete_conversation( $conversation_id, get_current_user_id() );
 
 		if ( $result ) {
 			wp_send_json_success( array( 'message' => 'Conversation deleted' ) );
@@ -503,6 +528,10 @@ class Abilities_Bridge_Admin_Page {
 		$conversation_id = isset( $_POST['conversation_id'] ) ? intval( wp_unslash( $_POST['conversation_id'] ) ) : 0;
 
 		if ( $conversation_id ) {
+			if ( ! $this->get_accessible_conversation( $conversation_id ) ) {
+				wp_send_json_error( array( 'message' => 'Conversation not found' ) );
+			}
+
 			$conversation = new Abilities_Bridge_Conversation( $conversation_id );
 			$token_usage  = $conversation->calculate_token_usage();
 
@@ -548,6 +577,10 @@ class Abilities_Bridge_Admin_Page {
 			wp_send_json_error( array( 'message' => 'Conversation ID required' ) );
 		}
 
+		if ( ! $this->get_accessible_conversation( $conversation_id ) ) {
+			wp_send_json_error( array( 'message' => 'Conversation not found' ) );
+		}
+
 		$logs = Abilities_Bridge_Logger::get_recent_activity( $conversation_id, 30 );
 
 		$activities = array();
@@ -576,6 +609,10 @@ class Abilities_Bridge_Admin_Page {
 
 		if ( empty( $conversation_id ) ) {
 			wp_send_json_error( array( 'message' => 'Conversation ID required' ) );
+		}
+
+		if ( ! $this->get_accessible_conversation( $conversation_id ) ) {
+			wp_send_json_error( array( 'message' => 'Conversation not found' ) );
 		}
 
 		$logs = Abilities_Bridge_Logger::get_conversation_activity( $conversation_id );
@@ -625,9 +662,10 @@ class Abilities_Bridge_Admin_Page {
 			$available_models = Abilities_Bridge_AI_Provider::get_available_models( $provider );
 			wp_send_json_success(
 				array(
-					'message'    => 'Model updated successfully',
-					'model'      => $model,
-					'model_name' => isset( $available_models[ $model ] ) ? $available_models[ $model ] : $model,
+					'message'        => 'Model updated successfully',
+					'model'          => $model,
+					'model_name'     => isset( $available_models[ $model ] ) ? $available_models[ $model ] : $model,
+					'model_guidance' => Abilities_Bridge_AI_Provider::get_model_guidance( $model, $provider ),
 				)
 			);
 		} else {
@@ -661,6 +699,7 @@ class Abilities_Bridge_Admin_Page {
 				'provider'         => $provider,
 				'model'            => $model,
 				'model_name'       => isset( $available_models[ $model ] ) ? $available_models[ $model ] : $model,
+				'model_guidance'   => Abilities_Bridge_AI_Provider::get_model_guidance( $model, $provider ),
 				'available_models' => $available_models,
 			)
 		);
@@ -694,6 +733,7 @@ class Abilities_Bridge_Admin_Page {
 					'provider_label'  => Abilities_Bridge_AI_Provider::get_provider_label( $provider ),
 					'model'           => $model,
 					'model_name'      => isset( $available_models[ $model ] ) ? $available_models[ $model ] : $model,
+					'model_guidance'  => Abilities_Bridge_AI_Provider::get_model_guidance( $model, $provider ),
 					'available_models'=> $available_models,
 				)
 			);
@@ -722,6 +762,7 @@ class Abilities_Bridge_Admin_Page {
 				'provider_label'   => Abilities_Bridge_AI_Provider::get_provider_label( $provider ),
 				'model'            => $model,
 				'model_name'       => isset( $available_models[ $model ] ) ? $available_models[ $model ] : $model,
+				'model_guidance'   => Abilities_Bridge_AI_Provider::get_model_guidance( $model, $provider ),
 				'available_models' => $available_models,
 			)
 		);
@@ -752,7 +793,7 @@ class Abilities_Bridge_Admin_Page {
 		}
 
 		// Get parent conversation details.
-		$parent_conversation = Abilities_Bridge_Database::get_conversation( $parent_conversation_id );
+		$parent_conversation = $this->get_accessible_conversation( $parent_conversation_id );
 		if ( ! $parent_conversation ) {
 			wp_send_json_error( array( 'message' => 'Parent conversation not found' ) );
 		}

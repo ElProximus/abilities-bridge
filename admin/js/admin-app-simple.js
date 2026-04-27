@@ -698,7 +698,7 @@
 					handleNewConversation();
 
 					// Update UI with model info
-					$('#abilities-bridge-model-description').text('Using: ' + response.data.model_name);
+					updateModelDescription(response.data.model_name, response.data.model_guidance);
 				} else {
 					alert('Error: ' + (response.data.message || 'Failed to change model'));
 				}
@@ -731,7 +731,7 @@
 
 					handleNewConversation();
 
-					$('#abilities-bridge-model-description').text('Using: ' + response.data.model_name);
+					updateModelDescription(response.data.model_name, response.data.model_guidance);
 				} else {
 					alert('Error: ' + (response.data.message || 'Failed to change provider'));
 				}
@@ -740,6 +740,11 @@
 				alert('Error: Failed to change provider');
 			}
 		});
+	}
+
+	function updateModelDescription(modelName, modelGuidance) {
+		const description = modelGuidance || ('Using: ' + modelName);
+		$('#abilities-bridge-model-description').text(description);
 	}
 
 	/**
@@ -789,7 +794,7 @@
 						updateModelOptions(response.data.available_models, conversationModel || response.data.model);
 						var models = response.data.available_models || {};
 						var modelName = models[conversationModel] || conversationModel || response.data.model_name;
-						$('#abilities-bridge-model-description').text('Using: ' + modelName);
+						updateModelDescription(modelName, response.data.model_guidance);
 					}
 				}
 			});
@@ -799,7 +804,7 @@
 			if ($modelSelect.length && $modelSelect.val() !== conversationModel) {
 				$modelSelect.val(conversationModel);
 				var modelName = $modelSelect.find('option:selected').text() || conversationModel;
-				$('#abilities-bridge-model-description').text('Using: ' + modelName);
+				updateModelDescription(modelName);
 			}
 		}
 	}
@@ -824,7 +829,7 @@
 				if (response.success) {
 					$providerSelect.val(response.data.provider);
 					updateModelOptions(response.data.available_models, response.data.model);
-					$('#abilities-bridge-model-description').text('Using: ' + response.data.model_name);
+					updateModelDescription(response.data.model_name, response.data.model_guidance);
 				}
 			}
 		});
