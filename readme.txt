@@ -24,6 +24,7 @@ Abilities Bridge connects AI to your WordPress site. Use the built-in admin chat
 * MCP server for Claude Desktop, ChatGPT, and other MCP clients
 * Persistent memory storage across conversations
 * Abilities execution with 7-gate permission controls
+* Connected Plugins — discover and approve AI abilities that other plugins register, with per-ability permission controls
 * Claude and OpenAI model support
 * OAuth 2.0 authentication for MCP connections
 
