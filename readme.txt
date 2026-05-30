@@ -120,6 +120,10 @@ An optional feature that lets AI store persistent notes in the WordPress databas
 
 AI-callable WordPress functions (creating posts, managing users, etc.) that must be individually authorized. Each ability is controlled by rate limits, risk levels, and approval requirements.
 
+= What is Beacon Campaign Sender? =
+
+Beacon Campaign Sender is a separate plugin that connects to Abilities Bridge as an Integrated Connected Plugin. When it is installed and active, it registers its tools with Abilities Bridge and they appear on the Integrations page. Approve them with one click to let AI agents use Beacon's tools, with the same per-ability permission controls as every other ability. Nothing is enabled until you approve it.
+
 == Screenshots ==
 
 1. Settings page with admin chat interface, API key configuration, and WP AI Client integration
