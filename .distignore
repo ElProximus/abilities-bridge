@@ -24,6 +24,7 @@ README.md
 
 # Version control
 .git/
+.gitattributes
 .github/
 .wordpress-org/
 

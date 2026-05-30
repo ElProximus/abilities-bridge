@@ -13,13 +13,14 @@ MCP server for WordPress. Connect Claude AI or OpenAI to execute WordPress Abili
 
 == Description ==
 
-**Making Connections Possible** | Now with support for Claude Opus 4.7, GPT-5.5, and Custom Apps in ChatGPT
+**Making Connections Possible** | Now with Claude Opus 4.8, in-chat image attachments and screenshots, GPT-5.5, and Custom Apps in ChatGPT
 
 Abilities Bridge connects AI to your WordPress site. Use the built-in admin chat, connect via MCP to Claude Desktop, or integrate with other MCP-compatible applications. Supports both Anthropic (Claude) and OpenAI models.
 
 = Key Features =
 
 * Admin chat interface for direct AI interaction
+* Image attachments in chat — upload images or capture a browser-approved screenshot (can be disabled in settings)
 * MCP server for Claude Desktop, ChatGPT, and other MCP clients
 * Persistent memory storage across conversations
 * Abilities execution with 7-gate permission controls
