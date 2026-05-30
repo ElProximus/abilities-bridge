@@ -4,7 +4,7 @@ Tags: ai, claude, openai, mcp, abilities
 Requires at least: 6.2
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.2.1
+Stable tag: 1.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -128,6 +128,17 @@ AI-callable WordPress functions (creating posts, managing users, etc.) that must
 6. Ability permissions list with core read-only abilities and authorized abilities
 
 == Changelog ==
+
+= 1.3.0 =
+* Added chat image attachments — upload images or capture a browser-approved screenshot in the main chat and floating bubble (JPEG/PNG/WebP, up to 3 per message)
+* Added an "Enable image attachments" setting to turn the upload and screenshot feature on or off
+* Added Claude Opus 4.8 support and relabeled Opus 4.7
+* Context-usage warning now scales to the model's context window instead of firing at fixed token counts
+* Private attachment storage with server-side validation and authenticated, ownership-checked serving; files are cleaned up on conversation delete and plugin uninstall
+* Replaced hardcoded Connected Plugins detection with the documented abilities_bridge_plugin_integrations contract
+* Added validation, safe per-callback discovery, disabled integration cards, profile-aware approvals, and partial approval messages
+* Added cleanup notice for old beacon-send/* approvals from pre-release Beacon Send integrations
+* Breaking change for private/pre-release partner integrations: providers must register themselves through the integration filter
 
 = 1.2.1 =
 * Added Claude Opus 4.7 model support (most intelligent option)

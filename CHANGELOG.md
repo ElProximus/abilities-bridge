@@ -5,6 +5,31 @@ All notable changes to Abilities Bridge will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-05-29
+
+### Added
+- Chat image attachments — upload images or capture a browser-approved screenshot in both the main admin chat and the floating chat bubble (JPEG/PNG/WebP, up to 3 images per message; image-only messages are supported).
+- "Enable image attachments" setting to turn the chat image upload and screenshot feature on or off.
+- Claude Opus 4.8 model support (now the most intelligent option in the model dropdown).
+- Documented `abilities_bridge_plugin_integrations` as the generic provider contract for Connected Plugins.
+- Added safe per-callback integration discovery so one broken provider cannot white-screen the Integrations page.
+- Added disabled and no-abilities integration card states with provider settings links.
+- Added profile-aware approved-state storage, explicit profile ability lists, partial approval responses, and reference-aware revocation.
+- Added a cleanup notice for old `beacon-send/*` approvals and permission rows.
+
+### Changed
+- Claude Opus 4.7 is no longer labeled "Most Intelligent" now that Opus 4.8 is available.
+- The context-usage warning now scales to the selected model's context window instead of firing at fixed token counts, so larger-window models are no longer flagged as running low prematurely.
+- Removed hardcoded Beacon Send and Site Abilities auto-detection; providers must register through the integration filter.
+- Provider-supplied ability rate limits are now clamped to Bridge caps of 10,000/day and 1,000/hour.
+
+### Security
+- Chat image attachments are stored privately outside the WordPress Media Library and served only to authenticated administrators via nonce, capability, and conversation-ownership checks.
+- Uploaded images are validated server-side (MIME sniffing, decoded byte size, and dimensions); SVG and non-raster types are rejected.
+- Attachment files are removed when a conversation is permanently deleted or purged by retention cleanup, and the attachment directory is removed on plugin uninstall.
+- Integration metadata is normalized and validated before rendering or approval.
+- Integration settings links are restricted to local admin page slugs.
+
 ## [1.2.1] - 2026-04-27
 
 ### Added

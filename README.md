@@ -38,6 +38,14 @@ Execute authorized WordPress Abilities with a 7-gate permission system:
 
 Requires Abilities API or WordPress 6.9+.
 
+## Connected Plugins Contract
+
+Provider plugins register cards for **Abilities Bridge > Integrations** with the `abilities_bridge_plugin_integrations` filter. Register the filter callback at file-include time or no later than `plugins_loaded`; discovery runs during admin page render after `admin_init`.
+
+Each integration entry must include `plugin_slug`, `plugin_name`, `plugin_version`, `integration_enabled`, `settings_admin_page`, `abilities`, and optional `approval_profiles`. Slugs must match `^[a-z][a-z0-9]*(-[a-z0-9]+)*$`; ability names must match `^[a-z][a-z0-9-]*(/[a-z][a-z0-9-]*)+$`. `settings_admin_page` must be a local admin page slug or `admin.php?page=...`; external URLs are rejected.
+
+Approval profiles may define an explicit `abilities` list. Without that list, a profile approves abilities whose `group` matches the profile slug. The reserved `all` profile approves every ability declared by that integration.
+
 ## Requirements
 
 **WordPress Admin Interface:**
@@ -258,5 +266,4 @@ Abilities Bridge now separates remote MCP setup into two provider-specific flows
 - Exposes the built-in HTTPS WordPress `/mcp` endpoint for ChatGPT developer mode
 - Keeps OAuth, tool discovery, and tool execution inside WordPress
 - Uses its own client credentials and settings tab to avoid confusion with Anthropic MCP
-
 

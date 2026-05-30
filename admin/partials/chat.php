@@ -52,13 +52,29 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 	<div class="abilities-bridge-chat-input-container">
 		<form id="abilities-bridge-chat-form">
+			<?php $image_attachments_enabled = Abilities_Bridge_Attachments::is_enabled(); ?>
 			<textarea
 				id="abilities-bridge-chat-input"
 				name="message"
 				rows="3"
 				placeholder="<?php esc_attr_e( 'Type your message here...', 'abilities-bridge' ); ?>"
-				required
+				<?php echo $image_attachments_enabled ? '' : 'required'; ?>
 			></textarea>
+			<?php if ( $image_attachments_enabled ) : ?>
+				<div id="abilities-bridge-chat-attachment-panel" class="abilities-bridge-attachment-panel">
+					<input type="file" id="abilities-bridge-chat-image-input" class="abilities-bridge-attachment-file-input" multiple accept="image/jpeg,image/png,image/webp">
+					<div class="abilities-bridge-attachment-toolbar">
+						<button type="button" class="button" id="abilities-bridge-chat-upload-image">
+							<?php esc_html_e( 'Upload image', 'abilities-bridge' ); ?>
+						</button>
+						<button type="button" class="button" id="abilities-bridge-chat-capture-screenshot">
+							<?php esc_html_e( 'Screenshot', 'abilities-bridge' ); ?>
+						</button>
+						<span id="abilities-bridge-chat-attachment-status" class="abilities-bridge-attachment-status" aria-live="polite"></span>
+					</div>
+					<div id="abilities-bridge-chat-attachment-preview" class="abilities-bridge-attachment-preview-list"></div>
+				</div>
+			<?php endif; ?>
 			<div class="abilities-bridge-chat-actions">
 				<button type="submit" class="button button-primary" id="abilities-bridge-send-button">
 					<?php esc_html_e( 'Send Message', 'abilities-bridge' ); ?>

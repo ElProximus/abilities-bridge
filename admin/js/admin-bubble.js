@@ -9,7 +9,8 @@
 	const state = {
 		currentConversationId: null,
 		currentRequest: null,
-		isOpen: false
+		isOpen: false,
+		attachmentManager: null
 	};
 
 	const selectors = {
@@ -27,6 +28,12 @@
 		form: '#abilities-bridge-bubble-form',
 		input: '#abilities-bridge-bubble-input',
 		send: '#abilities-bridge-bubble-send',
+		attachmentRoot: '#abilities-bridge-bubble-attachment-panel',
+		fileInput: '#abilities-bridge-bubble-image-input',
+		uploadImage: '#abilities-bridge-bubble-upload-image',
+		captureScreenshot: '#abilities-bridge-bubble-capture-screenshot',
+		attachmentStatus: '#abilities-bridge-bubble-attachment-status',
+		attachmentPreview: '#abilities-bridge-bubble-attachment-preview',
 		tokenCount: '#abilities-bridge-bubble-token-count',
 		tokenLimit: '#abilities-bridge-bubble-token-limit',
 		tokenFill: '#abilities-bridge-bubble-token-fill'
@@ -38,6 +45,7 @@
 		}
 
 		bindEvents();
+		initAttachments();
 		renderWelcome();
 		loadProviderState();
 		loadConversations();
@@ -48,6 +56,29 @@
 		if (shouldOpen) {
 			setPanelOpen(true);
 		}
+	}
+
+	function initAttachments() {
+		if (!window.AbilitiesBridgeChatAttachments) {
+			return;
+		}
+
+		state.attachmentManager = window.AbilitiesBridgeChatAttachments.create({
+			config: abilitiesBridgeBubbleData.attachments || {},
+			selectors: {
+				root: selectors.attachmentRoot,
+				fileInput: selectors.fileInput,
+				uploadButton: selectors.uploadImage,
+				screenshotButton: selectors.captureScreenshot,
+				status: selectors.attachmentStatus,
+				preview: selectors.attachmentPreview
+			},
+			onStatus: function(message) {
+				if (message) {
+					setStatus(message);
+				}
+			}
+		});
 	}
 
 	function bindEvents() {
@@ -122,11 +153,12 @@
 		event.preventDefault();
 
 		const message = $(selectors.input).val().trim();
-		if (!message) {
+		const attachments = state.attachmentManager ? state.attachmentManager.getPayload() : [];
+		if (!message && attachments.length === 0) {
 			return;
 		}
 
-		appendMessage('user', message);
+		appendMessage('user', buildLocalDisplayContent(message, attachments));
 		$(selectors.input).val('');
 		setLoading(true);
 		setStatus(abilitiesBridgeBubbleData.i18n.sending || 'Processing...');
@@ -138,6 +170,7 @@
 				action: 'abilities_bridge_send_message',
 				nonce: abilitiesBridgeBubbleData.nonce,
 				message: message,
+				attachments: JSON.stringify(attachments),
 				conversation_id: state.currentConversationId
 			}
 		}).done(function(response) {
@@ -152,6 +185,9 @@
 			}
 
 			appendMessage('assistant', response.data.response || '');
+			if (state.attachmentManager) {
+				state.attachmentManager.clear();
+			}
 			updateTokenMeter();
 			setStatus(abilitiesBridgeBubbleData.i18n.ready || 'Ready');
 		}).fail(function() {
@@ -163,12 +199,33 @@
 		});
 	}
 
+	function buildLocalDisplayContent(message, attachments) {
+		const blocks = [];
+		(attachments || []).forEach(function(attachment) {
+			blocks.push({
+				type: 'image',
+				source: attachment.source,
+				name: attachment.name,
+				width: attachment.width,
+				height: attachment.height,
+				preview_url: attachment.data_url
+			});
+		});
+		if (message) {
+			blocks.push({ type: 'text', text: message });
+		}
+		return blocks.length ? blocks : message;
+	}
+
 	function handleNewConversation(skipConfirm) {
 		if (!skipConfirm && state.currentConversationId && !window.confirm(abilitiesBridgeBubbleData.i18n.newConversation)) {
 			return;
 		}
 
 		setConversationId(null);
+		if (state.attachmentManager) {
+			state.attachmentManager.clear();
+		}
 		$(selectors.conversationSelect).val('');
 		renderWelcome();
 		updateTokenMeter();
@@ -288,6 +345,9 @@
 
 	function setLoading(loading) {
 		$(selectors.input).prop('disabled', loading);
+		if (state.attachmentManager) {
+			state.attachmentManager.setDisabled(loading);
+		}
 		$(selectors.send)
 			.prop('disabled', loading)
 			.text(loading ? abilitiesBridgeBubbleData.i18n.sending : abilitiesBridgeBubbleData.i18n.send);
@@ -497,6 +557,10 @@
 	}
 
 	function extractDisplayText(content) {
+		if (window.AbilitiesBridgeChatAttachments) {
+			return window.AbilitiesBridgeChatAttachments.extractDisplayText(content);
+		}
+
 		if (Array.isArray(content)) {
 			return content.map(function(block) {
 				if (block && block.type === 'text' && block.text) {
@@ -520,6 +584,10 @@
 	}
 
 	function renderPlainContent(content) {
+		if (window.AbilitiesBridgeChatAttachments) {
+			return window.AbilitiesBridgeChatAttachments.renderMessageContent(content);
+		}
+
 		return escapeHtml(extractDisplayText(content)).replace(/\n/g, '<br>');
 	}
 

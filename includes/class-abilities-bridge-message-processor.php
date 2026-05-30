@@ -41,15 +41,20 @@ class Abilities_Bridge_Message_Processor {
 	 * @param Abilities_Bridge_Conversation $conversation Conversation instance.
 	 * @param string                        $user_message User's message.
 	 * @param bool                          $plan_mode Whether plan mode is enabled (restricts write operations).
+	 * @param array                         $image_blocks Stored image attachment blocks.
 	 * @return array Result with success status and response/error
 	 */
-	public function send_and_process( $conversation, $user_message, $plan_mode = false ) {
+	public function send_and_process( $conversation, $user_message, $plan_mode = false, $image_blocks = array() ) {
 		// Set overall timeout for entire conversation.
 		$conversation_start    = time();
 		$max_conversation_time = 300; // 5 minutes max for entire conversation.
 
 		// Add user message to conversation.
-		$conversation->add_user_message( $user_message );
+		$user_content = class_exists( 'Abilities_Bridge_Attachments' )
+			? Abilities_Bridge_Attachments::build_user_content( $user_message, $image_blocks )
+			: $user_message;
+		$conversation->add_user_message( $user_content );
+		$current_user_message_index = count( $conversation->get_messages() ) - 1;
 
 		$provider             = Abilities_Bridge_AI_Provider::get_current_provider();
 		$model                = null;
@@ -123,7 +128,16 @@ class Abilities_Bridge_Message_Processor {
 					$ai_client->set_previous_response_id( $previous_response_id );
 				}
 
-				$response = $ai_client->send_message( $conversation->get_messages_for_api(), $tools, 4096, $model );
+				$response = $ai_client->send_message(
+					$conversation->get_messages_for_api(
+						array(
+							'hydrate_image_message_index' => $current_user_message_index,
+						)
+					),
+					$tools,
+					4096,
+					$model
+				);
 
 				if ( ! is_wp_error( $response ) ) {
 					break; // Success - continue processing.

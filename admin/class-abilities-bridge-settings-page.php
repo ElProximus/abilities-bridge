@@ -211,6 +211,16 @@ class Abilities_Bridge_Settings_Page {
 
 		register_setting(
 			'abilities_bridge_settings',
+			'abilities_bridge_enable_image_attachments',
+			array(
+				'type'              => 'boolean',
+				'sanitize_callback' => 'rest_sanitize_boolean',
+				'default'           => true,
+			)
+		);
+
+		register_setting(
+			'abilities_bridge_settings',
 			'abilities_bridge_use_wp_ai_client',
 			array(
 				'type'              => 'boolean',
@@ -274,6 +284,14 @@ class Abilities_Bridge_Settings_Page {
 			'abilities_bridge_enable_chat_bubble',
 			__( 'Chat Bubble', 'abilities-bridge' ),
 			array( $this, 'render_chat_bubble_field' ),
+			'abilities-bridge-settings',
+			'abilities_bridge_api_section'
+		);
+
+		add_settings_field(
+			'abilities_bridge_enable_image_attachments',
+			__( 'Image Attachments', 'abilities-bridge' ),
+			array( $this, 'render_image_attachments_field' ),
 			'abilities-bridge-settings',
 			'abilities_bridge_api_section'
 		);
@@ -554,6 +572,32 @@ class Abilities_Bridge_Settings_Page {
 		</label>
 		<p class="description">
 			<?php esc_html_e( 'The bubble uses the same saved conversations, provider, and model selection as the main Abilities Bridge chat.', 'abilities-bridge' ); ?>
+		</p>
+		<?php
+	}
+
+	/**
+	 * Render image attachment field.
+	 */
+	public function render_image_attachments_field() {
+		$enabled = get_option( 'abilities_bridge_enable_image_attachments', true );
+		?>
+		<input type="hidden" name="abilities_bridge_enable_image_attachments" value="0" />
+		<label for="abilities_bridge_enable_image_attachments">
+			<input
+				type="checkbox"
+				name="abilities_bridge_enable_image_attachments"
+				id="abilities_bridge_enable_image_attachments"
+				value="1"
+				<?php checked( $enabled, true ); ?>
+			/>
+			<?php esc_html_e( 'Enable image upload and screenshot capture in chat.', 'abilities-bridge' ); ?>
+		</label>
+		<p class="description">
+			<?php esc_html_e( 'When enabled, administrators can attach images or capture a browser-approved screenshot for AI chat. Screenshots may include sensitive on-screen content.', 'abilities-bridge' ); ?>
+		</p>
+		<p class="description">
+			<?php esc_html_e( 'Turning this off blocks new image attachments on both the main chat and floating bubble. Existing conversation image previews remain visible.', 'abilities-bridge' ); ?>
 		</p>
 		<?php
 	}

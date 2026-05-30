@@ -52,6 +52,7 @@ class Abilities_Bridge_Admin_Page {
 		add_action( 'wp_ajax_abilities_bridge_set_provider', array( $this, 'ajax_set_provider' ) );
 		add_action( 'wp_ajax_abilities_bridge_get_provider', array( $this, 'ajax_get_provider' ) );
 		add_action( 'wp_ajax_abilities_bridge_create_summary_continuation', array( $this, 'ajax_create_summary_continuation' ) );
+		add_action( 'wp_ajax_abilities_bridge_get_attachment', array( $this, 'ajax_get_attachment' ) );
 	}
 
 	/**
@@ -93,6 +94,7 @@ class Abilities_Bridge_Admin_Page {
 		$styles_version = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/css/admin-styles.css' );
 		$progress_version = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/css/progress-styles.css' );
 		$bubbles_version = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/css/chat-bubbles.css' );
+		$attachments_version = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/js/chat-attachments.js' );
 		$app_version = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/js/admin-app-simple.js' );
 		$dashboard_version = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/js/dashboard.js' );
 
@@ -118,9 +120,17 @@ class Abilities_Bridge_Admin_Page {
 		);
 
 		wp_enqueue_script(
+			'abilities-bridge-chat-attachments',
+			ABILITIES_BRIDGE_PLUGIN_URL . 'admin/js/chat-attachments.js',
+			array( 'jquery' ),
+			$attachments_version ? $attachments_version : ABILITIES_BRIDGE_VERSION,
+			true
+		);
+
+		wp_enqueue_script(
 			'abilities-bridge-app',
 			ABILITIES_BRIDGE_PLUGIN_URL . 'admin/js/admin-app-simple.js',
-			array( 'jquery' ),
+			array( 'jquery', 'abilities-bridge-chat-attachments' ),
 			$app_version ? $app_version : ABILITIES_BRIDGE_VERSION,
 			true
 		);
@@ -140,6 +150,7 @@ class Abilities_Bridge_Admin_Page {
 				'ajax_url' => admin_url( 'admin-ajax.php' ),
 				'nonce'    => wp_create_nonce( 'abilities_bridge_nonce' ),
 				'user_id'  => get_current_user_id(),
+				'attachments' => Abilities_Bridge_Attachments::get_config(),
 			)
 		);
 	}
@@ -236,9 +247,15 @@ class Abilities_Bridge_Admin_Page {
 		$message         = isset( $_POST['message'] ) ? sanitize_textarea_field( wp_unslash( $_POST['message'] ) ) : '';
 		$conversation_id = isset( $_POST['conversation_id'] ) ? intval( wp_unslash( $_POST['conversation_id'] ) ) : null;
 		$plan_mode       = isset( $_POST['plan_mode'] ) && sanitize_text_field( wp_unslash( $_POST['plan_mode'] ) ) === 'true';
+		$attachments_raw = isset( $_POST['attachments'] ) ? $_POST['attachments'] : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$attachments     = Abilities_Bridge_Attachments::parse_incoming_attachments( $attachments_raw );
 
-		if ( empty( $message ) ) {
-			wp_send_json_error( array( 'message' => 'Message cannot be empty' ) );
+		if ( is_wp_error( $attachments ) ) {
+			wp_send_json_error( array( 'message' => $attachments->get_error_message() ) );
+		}
+
+		if ( '' === trim( $message ) && empty( $attachments ) ) {
+			wp_send_json_error( array( 'message' => 'Message or image attachment required' ) );
 		}
 
 		// Limit message length to prevent abuse.
@@ -255,7 +272,7 @@ class Abilities_Bridge_Admin_Page {
 
 		if ( ! $conversation_id ) {
 			// Create new conversation with first message as title.
-			$title  = substr( $message, 0, 80 ) . ( strlen( $message ) > 80 ? '...' : '' );
+			$title  = Abilities_Bridge_Attachments::derive_title( $message, $attachments );
 			$new_id = $conversation->create( $title );
 
 			if ( ! $new_id ) {
@@ -265,6 +282,11 @@ class Abilities_Bridge_Admin_Page {
 			$conversation_id = $new_id;
 		}
 
+		$image_blocks = Abilities_Bridge_Attachments::store_attachments( $conversation_id, $attachments );
+		if ( is_wp_error( $image_blocks ) ) {
+			wp_send_json_error( array( 'message' => $image_blocks->get_error_message() ) );
+		}
+
 		// Log the action.
 		Abilities_Bridge_Logger::log_action( $conversation_id, 'sent message to AI' );
 
@@ -272,7 +294,7 @@ class Abilities_Bridge_Admin_Page {
 		Abilities_Bridge_Logger::log_tool_progress( $conversation_id, 'request', 'processing', '⏳ Processing message...' );
 
 		// Send message to Claude.
-		$result = $conversation->send_message( $message, $plan_mode );
+		$result = $conversation->send_message( $message, $plan_mode, $image_blocks );
 
 		if ( ! $result['success'] ) {
 			Abilities_Bridge_Logger::log_action( $conversation_id, 'message failed', $result['error'] );
@@ -298,10 +320,12 @@ class Abilities_Bridge_Admin_Page {
 		// Don't show warnings if this is a summary request.
 		$is_summary_request = ( strpos( $message, 'comprehensive summary' ) !== false );
 
-		if ( ! $is_summary_request ) {
-			if ( $token_usage['total'] >= 150000 ) {
+		if ( ! $is_summary_request && isset( $token_usage['percentage'] ) ) {
+			// Scale the warning to the model's context window so larger-window
+			// models are not flagged prematurely.
+			if ( $token_usage['percentage'] >= 90 ) {
 				$summary_status = 'final_warning'; // Second warning - last chance.
-			} elseif ( $token_usage['total'] >= 125000 ) {
+			} elseif ( $token_usage['percentage'] >= 80 ) {
 				$summary_status = 'first_warning'; // First warning - suggest summary.
 			}
 		}
@@ -324,6 +348,41 @@ class Abilities_Bridge_Admin_Page {
 		}
 
 		wp_send_json_success( $response_data );
+	}
+
+	/**
+	 * AJAX: Serve a private conversation image attachment.
+	 *
+	 * @return void
+	 */
+	public function ajax_get_attachment() {
+		check_ajax_referer( 'abilities_bridge_nonce', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			status_header( 403 );
+			wp_die( esc_html__( 'Insufficient permissions', 'abilities-bridge' ) );
+		}
+
+		$conversation_id = isset( $_GET['conversation_id'] ) ? intval( wp_unslash( $_GET['conversation_id'] ) ) : 0;
+		$attachment_id   = isset( $_GET['attachment_id'] ) ? sanitize_key( wp_unslash( $_GET['attachment_id'] ) ) : '';
+
+		if ( ! $conversation_id || ! $attachment_id || ! $this->get_accessible_conversation( $conversation_id ) ) {
+			status_header( 404 );
+			wp_die( esc_html__( 'Image attachment not found.', 'abilities-bridge' ) );
+		}
+
+		$attachment = Abilities_Bridge_Attachments::get_attachment_for_serving( $conversation_id, $attachment_id );
+		if ( is_wp_error( $attachment ) ) {
+			status_header( 404 );
+			wp_die( esc_html( $attachment->get_error_message() ) );
+		}
+
+		nocache_headers();
+		header( 'Content-Type: ' . $attachment['mime_type'] );
+		header( 'Content-Length: ' . filesize( $attachment['path'] ) );
+		header( 'Content-Disposition: inline; filename="' . sanitize_file_name( $attachment['name'] ) . '"' );
+		readfile( $attachment['path'] ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_readfile
+		exit;
 	}
 
 	/**
@@ -407,23 +466,11 @@ class Abilities_Bridge_Admin_Page {
 						'timestamp' => $msg->created_at,
 					);
 				} elseif ( is_array( $content ) ) {
-					// Array content - extract text, skip tool_result blocks.
-					$text_parts = array();
-					foreach ( $content as $block ) {
-						if ( isset( $block['type'] ) ) {
-							if ( 'text' === $block['type'] && isset( $block['text'] ) ) {
-								$text_parts[] = $block['text'];
-							}
-							// Skip tool_result blocks - they're not meant for display.
-						}
-					}
-					if ( ! empty( $text_parts ) ) {
-						$formatted_messages[] = array(
-							'role'      => 'user',
-							'content'   => implode( "\n\n", $text_parts ),
-							'timestamp' => $msg->created_at,
-						);
-					}
+					$formatted_messages[] = array(
+						'role'      => 'user',
+						'content'   => Abilities_Bridge_Attachments::format_content_for_display( $content, $conversation_id ),
+						'timestamp' => $msg->created_at,
+					);
 				}
 			} elseif ( 'assistant' === $msg->role ) {
 				if ( is_array( $content ) ) {

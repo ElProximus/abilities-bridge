@@ -56,8 +56,7 @@ class Abilities_Bridge_Token_Calculator {
 
 		// Count message tokens.
 		foreach ( $messages as $msg ) {
-			$content                  = is_array( $msg['content'] ) ? wp_json_encode( $msg['content'] ) : $msg['content'];
-			$token_count['messages'] += self::estimate_tokens( $content, $provider );
+			$token_count['messages'] += self::estimate_message_tokens( isset( $msg['content'] ) ? $msg['content'] : '', $provider );
 		}
 
 		// Count tool definition tokens.
@@ -105,6 +104,36 @@ class Abilities_Bridge_Token_Calculator {
 		}
 
 		return intval( $estimated );
+	}
+
+	/**
+	 * Estimate tokens for a string or multimodal content blocks.
+	 *
+	 * @param mixed       $content Message content.
+	 * @param string|null $provider Provider key.
+	 * @return int
+	 */
+	private static function estimate_message_tokens( $content, $provider = null ) {
+		if ( ! is_array( $content ) ) {
+			return self::estimate_tokens( $content, $provider );
+		}
+
+		$total = 0;
+		foreach ( $content as $block ) {
+			if ( ! is_array( $block ) || empty( $block['type'] ) ) {
+				continue;
+			}
+
+			if ( 'text' === $block['type'] && isset( $block['text'] ) ) {
+				$total += self::estimate_tokens( $block['text'], $provider );
+			} elseif ( 'image' === $block['type'] && class_exists( 'Abilities_Bridge_Attachments' ) ) {
+				$total += Abilities_Bridge_Attachments::estimate_image_tokens( $block, $provider );
+			} else {
+				$total += self::estimate_tokens( wp_json_encode( $block ), $provider );
+			}
+		}
+
+		return $total;
 	}
 
 	/**
@@ -156,14 +185,19 @@ class Abilities_Bridge_Token_Calculator {
 		} else {
 			// Model configurations for Claude models.
 			$model_configs = array(
+				'claude-opus-4-8'           => array(
+					'input_limit'  => 200000,
+					'output_limit' => 128000,
+					'name'         => 'Claude Opus 4.8',
+				),
 				'claude-opus-4-7'           => array(
 					'input_limit'  => 200000,
-					'output_limit' => 64000,
+					'output_limit' => 128000,
 					'name'         => 'Claude Opus 4.7',
 				),
 				'claude-opus-4-6'           => array(
 					'input_limit'  => 200000,
-					'output_limit' => 64000,
+					'output_limit' => 128000,
 					'name'         => 'Claude Opus 4.6',
 				),
 				'claude-sonnet-4-6'         => array(

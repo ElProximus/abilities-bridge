@@ -275,6 +275,21 @@ class Abilities_Bridge_Welcome_Wizard {
 	 */
 	public static function get_version_changelog( $version ) {
 		$changelogs = array(
+			'1.3.0' => array(
+				'new'      => array(
+					'Connected Plugins now use a documented integration contract',
+					'Integration cards can show disabled and no-abilities states with provider settings links',
+					'Approval profiles can approve explicit ability lists',
+				),
+				'changes'  => array(
+					'Removed hardcoded provider detection in favor of provider-registered integrations',
+					'Integration discovery now safely skips malformed provider data',
+				),
+				'security' => array(
+					'Integration metadata is validated before rendering or approval',
+					'Provider settings links are restricted to local admin pages',
+				),
+			),
 			'2.0.0' => array(
 				'new'      => array(
 					'New built-in tool: execute_wp_cli - Execute WP-CLI commands (read-only)',

@@ -11,6 +11,7 @@
 	let currentConversationId = null;
 	let activityPollInterval = null;
 	let currentRequest = null;
+	let attachmentManager = null;
 	let displayedActivities = new Set(); // Track which activities are already displayed
 
 	/**
@@ -18,6 +19,7 @@
 	 */
 	function init() {
 		bindEvents();
+		initAttachments();
 		initProgressBar();
 		loadProviderState();
 		// Load conversations after a short delay to ensure page is ready
@@ -25,6 +27,27 @@
 			loadConversations();
 			updateTokenMeter(); // Update token meter on init
 		}, 500);
+	}
+
+	/**
+	 * Initialize shared image attachment controls.
+	 */
+	function initAttachments() {
+		if (!window.AbilitiesBridgeChatAttachments) {
+			return;
+		}
+
+		attachmentManager = window.AbilitiesBridgeChatAttachments.create({
+			config: abilitiesBridgeData.attachments || {},
+			selectors: {
+				root: '#abilities-bridge-chat-attachment-panel',
+				fileInput: '#abilities-bridge-chat-image-input',
+				uploadButton: '#abilities-bridge-chat-upload-image',
+				screenshotButton: '#abilities-bridge-chat-capture-screenshot',
+				preview: '#abilities-bridge-chat-attachment-preview',
+				status: '#abilities-bridge-chat-attachment-status'
+			}
+		});
 	}
 
 	/**
@@ -86,10 +109,11 @@
 		e.preventDefault();
 
 		const message = $('#abilities-bridge-chat-input').val().trim();
-		if (!message) return;
+		const attachments = attachmentManager ? attachmentManager.getPayload() : [];
+		if (!message && attachments.length === 0) return;
 
 		setLoading(true);
-		appendMessage('user', message);
+		appendMessage('user', buildLocalDisplayContent(message, attachments));
 		$('#abilities-bridge-chat-input').val('');
 
 		// Toggle Send/Stop buttons
@@ -111,6 +135,7 @@
 				action: 'abilities_bridge_send_message',
 				nonce: abilitiesBridgeData.nonce,
 				message: message,
+				attachments: JSON.stringify(attachments),
 				conversation_id: currentConversationId,
 				plan_mode: $('#abilities-bridge-plan-mode').is(':checked') ? 'true' : 'false'
 			},
@@ -130,6 +155,9 @@
 					}
 
 					appendMessage('assistant', response.data.response);
+					if (attachmentManager) {
+						attachmentManager.clear();
+					}
 
 					if (response.data.iterations && response.data.iterations > 1) {
 					}
@@ -352,6 +380,9 @@
 	function setLoading(loading) {
 		const $input = $('#abilities-bridge-chat-input');
 		const $button = $('#abilities-bridge-chat-form button[type="submit"]');
+		if (attachmentManager) {
+			attachmentManager.setDisabled(loading);
+		}
 
 		if (loading) {
 			$input.prop('disabled', true);
@@ -380,12 +411,44 @@
 		const messageHtml = `
 			<div class="chat-message ${messageClass}${excludedClass}">
 				<div class="message-role">${role === 'user' ? 'You' : role === 'system' ? 'System' : role === 'error' ? 'Error' : 'AI'}${excludedLabel}</div>
-				<div class="message-content">${escapeHtml(content)}</div>
+				<div class="message-content">${renderMessageContent(content)}</div>
 			</div>
 		`;
 
 		$chatMessages.append(messageHtml);
 		$chatMessages.scrollTop($chatMessages[0].scrollHeight);
+	}
+
+	/**
+	 * Build local display blocks for a just-submitted message.
+	 */
+	function buildLocalDisplayContent(message, attachments) {
+		const blocks = [];
+		(attachments || []).forEach(function(attachment) {
+			blocks.push({
+				type: 'image',
+				source: attachment.source,
+				name: attachment.name,
+				width: attachment.width,
+				height: attachment.height,
+				preview_url: attachment.data_url
+			});
+		});
+		if (message) {
+			blocks.push({ type: 'text', text: message });
+		}
+		return blocks.length ? blocks : message;
+	}
+
+	/**
+	 * Render string or multimodal message content.
+	 */
+	function renderMessageContent(content) {
+		if (window.AbilitiesBridgeChatAttachments) {
+			return window.AbilitiesBridgeChatAttachments.renderMessageContent(content);
+		}
+
+		return escapeHtml(String(content || ''));
 	}
 
 	/**
@@ -544,6 +607,9 @@
 		if (confirm('Start a new conversation?')) {
 			currentConversationId = null;
 			$('#abilities-bridge-chat-messages').empty();
+			if (attachmentManager) {
+				attachmentManager.clear();
+			}
 
 			// Show welcome message (matches initial page load behavior)
 			appendMessage('assistant', 'Hi, I\'m your AI assistant. How can I help you today?');

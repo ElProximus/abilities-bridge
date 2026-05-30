@@ -126,6 +126,7 @@ class Abilities_Bridge_Admin_Bubble {
 	 */
 	private function enqueue_shared_assets() {
 		$css_version = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/css/admin-bubble.css' );
+		$attachments_version = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/js/chat-attachments.js' );
 		$js_version  = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/js/admin-bubble.js' );
 
 		wp_enqueue_style(
@@ -136,9 +137,17 @@ class Abilities_Bridge_Admin_Bubble {
 		);
 
 		wp_enqueue_script(
+			'abilities-bridge-chat-attachments',
+			ABILITIES_BRIDGE_PLUGIN_URL . 'admin/js/chat-attachments.js',
+			array( 'jquery' ),
+			$attachments_version ? $attachments_version : ABILITIES_BRIDGE_VERSION,
+			true
+		);
+
+		wp_enqueue_script(
 			'abilities-bridge-bubble',
 			ABILITIES_BRIDGE_PLUGIN_URL . 'admin/js/admin-bubble.js',
-			array( 'jquery' ),
+			array( 'jquery', 'abilities-bridge-chat-attachments' ),
 			$js_version ? $js_version : ABILITIES_BRIDGE_VERSION,
 			true
 		);
@@ -149,6 +158,7 @@ class Abilities_Bridge_Admin_Bubble {
 			array(
 				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
 				'nonce'   => wp_create_nonce( 'abilities_bridge_nonce' ),
+				'attachments' => Abilities_Bridge_Attachments::get_config(),
 				'i18n'    => array(
 					'welcome'            => __( 'Hi, I\'m your AI assistant. How can I help you today?', 'abilities-bridge' ),
 					'newConversation'    => __( 'Start a new conversation?', 'abilities-bridge' ),
@@ -230,7 +240,18 @@ class Abilities_Bridge_Admin_Bubble {
 				<div id="abilities-bridge-bubble-messages" class="abilities-bridge-bubble-messages"></div>
 
 				<form id="abilities-bridge-bubble-form" class="abilities-bridge-bubble-form">
-					<textarea id="abilities-bridge-bubble-input" rows="3" placeholder="<?php esc_attr_e( 'Type your message here...', 'abilities-bridge' ); ?>" required></textarea>
+					<textarea id="abilities-bridge-bubble-input" rows="3" placeholder="<?php esc_attr_e( 'Type your message here...', 'abilities-bridge' ); ?>"></textarea>
+					<?php if ( Abilities_Bridge_Attachments::is_enabled() ) : ?>
+						<div id="abilities-bridge-bubble-attachment-panel" class="abilities-bridge-attachment-panel abilities-bridge-bubble-attachment-panel">
+							<input type="file" id="abilities-bridge-bubble-image-input" class="abilities-bridge-attachment-file-input" multiple accept="image/jpeg,image/png,image/webp">
+							<div class="abilities-bridge-attachment-toolbar">
+								<button type="button" id="abilities-bridge-bubble-upload-image" class="abilities-bridge-bubble-secondary"><?php esc_html_e( 'Upload image', 'abilities-bridge' ); ?></button>
+								<button type="button" id="abilities-bridge-bubble-capture-screenshot" class="abilities-bridge-bubble-secondary"><?php esc_html_e( 'Screenshot', 'abilities-bridge' ); ?></button>
+							</div>
+							<div id="abilities-bridge-bubble-attachment-status" class="abilities-bridge-attachment-status" aria-live="polite"></div>
+							<div id="abilities-bridge-bubble-attachment-preview" class="abilities-bridge-attachment-preview-list"></div>
+						</div>
+					<?php endif; ?>
 					<div class="abilities-bridge-bubble-form-actions">
 						<span class="abilities-bridge-bubble-hint"><?php esc_html_e( 'Enter to send, Shift + Enter for a new line', 'abilities-bridge' ); ?></span>
 						<button type="submit" id="abilities-bridge-bubble-send" class="abilities-bridge-bubble-primary"><?php esc_html_e( 'Send', 'abilities-bridge' ); ?></button>

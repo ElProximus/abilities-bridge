@@ -340,15 +340,36 @@ class Abilities_Bridge_OpenAI_API {
 
 			if ( 'user' === $role ) {
 				if ( is_array( $content ) ) {
+					$user_content_items = array();
+
 					foreach ( $content as $block ) {
 						if ( isset( $block['type'] ) && 'tool_result' === $block['type'] ) {
+							$input_items = $this->flush_user_content_items( $input_items, $user_content_items );
 							$input_items[] = array(
 								'type'    => 'function_call_output',
 								'call_id' => isset( $block['tool_use_id'] ) ? $block['tool_use_id'] : '',
 								'output'  => is_string( $block['content'] ) ? $block['content'] : wp_json_encode( $block['content'] ),
 							);
+						} elseif ( isset( $block['type'] ) && 'text' === $block['type'] && isset( $block['text'] ) ) {
+							$user_content_items[] = array(
+								'type' => 'input_text',
+								'text' => $block['text'],
+							);
+						} elseif ( isset( $block['type'], $block['source'] ) && 'image' === $block['type'] && is_array( $block['source'] ) ) {
+							$media_type = isset( $block['source']['media_type'] ) ? $block['source']['media_type'] : '';
+							$data       = isset( $block['source']['data'] ) ? $block['source']['data'] : '';
+
+							if ( $media_type && $data ) {
+								$user_content_items[] = array(
+									'type'      => 'input_image',
+									'image_url' => 'data:' . $media_type . ';base64,' . $data,
+									'detail'    => 'auto',
+								);
+							}
 						}
 					}
+
+					$input_items = $this->flush_user_content_items( $input_items, $user_content_items );
 				} else {
 					$input_items[] = array(
 						'role'    => 'user',
@@ -402,6 +423,25 @@ class Abilities_Bridge_OpenAI_API {
 				'content' => implode( "\n\n", $text_chunks ),
 			);
 			$text_chunks = array();
+		}
+
+		return $input_items;
+	}
+
+	/**
+	 * Append buffered multimodal user content as one Responses message.
+	 *
+	 * @param array $input_items Existing input items.
+	 * @param array $content_items Buffered user content items.
+	 * @return array
+	 */
+	private function flush_user_content_items( $input_items, &$content_items ) {
+		if ( ! empty( $content_items ) ) {
+			$input_items[] = array(
+				'role'    => 'user',
+				'content' => $content_items,
+			);
+			$content_items = array();
 		}
 
 		return $input_items;

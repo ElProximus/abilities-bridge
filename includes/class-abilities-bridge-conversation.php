@@ -132,9 +132,9 @@ class Abilities_Bridge_Conversation {
 	}
 
 	/**
-	 * Add a user message
+	 * Add a user message.
 	 *
-	 * @param string $content Message content.
+	 * @param string|array $content Message content.
 	 */
 	public function add_user_message( $content ) {
 		$this->messages[] = array(
@@ -143,7 +143,8 @@ class Abilities_Bridge_Conversation {
 		);
 
 		if ( $this->conversation_id ) {
-			Abilities_Bridge_Database::add_message( $this->conversation_id, 'user', $content );
+			$content_json = is_array( $content ) ? wp_json_encode( $content ) : $content;
+			Abilities_Bridge_Database::add_message( $this->conversation_id, 'user', $content_json );
 			// Invalidate cache when adding new message.
 			$this->invalidate_cache();
 		}
@@ -210,12 +211,39 @@ class Abilities_Bridge_Conversation {
 	}
 
 	/**
-	 * Get messages for sending to Claude API
+	 * Get messages for sending to provider APIs.
 	 *
+	 * @param array $args Replay options.
 	 * @return array Messages array
 	 */
-	public function get_messages_for_api() {
-		return $this->messages;
+	public function get_messages_for_api( $args = array() ) {
+		$args = wp_parse_args(
+			$args,
+			array(
+				'hydrate_image_message_index' => null,
+			)
+		);
+
+		$messages = array();
+
+		foreach ( $this->messages as $index => $message ) {
+			$content = isset( $message['content'] ) ? $message['content'] : '';
+
+			if ( class_exists( 'Abilities_Bridge_Attachments' ) ) {
+				$content = Abilities_Bridge_Attachments::prepare_content_for_api(
+					$content,
+					$this->conversation_id,
+					null !== $args['hydrate_image_message_index'] && (int) $index === (int) $args['hydrate_image_message_index']
+				);
+			}
+
+			$messages[] = array(
+				'role'    => isset( $message['role'] ) ? $message['role'] : '',
+				'content' => $content,
+			);
+		}
+
+		return $messages;
 	}
 
 	/**
@@ -258,7 +286,7 @@ class Abilities_Bridge_Conversation {
 		}
 
 		return Abilities_Bridge_Token_Calculator::calculate_token_usage(
-			$this->get_messages_for_api(),
+			$this->get_messages(),
 			$tools,
 			$model,
 			$provider
@@ -271,10 +299,11 @@ class Abilities_Bridge_Conversation {
 	 *
 	 * @param string $user_message User's message.
 	 * @param bool   $plan_mode Whether plan mode is enabled (restricts write operations).
+	 * @param array  $image_blocks Stored image attachment blocks.
 	 * @return array Result with success status and response/error
 	 */
-	public function send_message( $user_message, $plan_mode = false ) {
-		return $this->message_processor->send_and_process( $this, $user_message, $plan_mode );
+	public function send_message( $user_message, $plan_mode = false, $image_blocks = array() ) {
+		return $this->message_processor->send_and_process( $this, $user_message, $plan_mode, $image_blocks );
 	}
 
 	/**
@@ -289,8 +318,20 @@ class Abilities_Bridge_Conversation {
 
 		// Get first user message.
 		foreach ( $this->messages as $msg ) {
-			if ( 'user' === $msg['role'] && is_string( $msg['content'] ) ) {
-				return substr( $msg['content'], 0, 50 ) . ( strlen( $msg['content'] ) > 50 ? '...' : '' );
+			if ( 'user' !== $msg['role'] ) {
+				continue;
+			}
+
+			$text = class_exists( 'Abilities_Bridge_Attachments' )
+				? Abilities_Bridge_Attachments::extract_text( $msg['content'] )
+				: ( is_string( $msg['content'] ) ? trim( $msg['content'] ) : '' );
+
+			if ( '' !== $text ) {
+				return substr( $text, 0, 50 ) . ( strlen( $text ) > 50 ? '...' : '' );
+			}
+
+			if ( class_exists( 'Abilities_Bridge_Attachments' ) && Abilities_Bridge_Attachments::content_has_images( $msg['content'] ) ) {
+				return Abilities_Bridge_Attachments::derive_title( '', is_array( $msg['content'] ) ? $msg['content'] : array() );
 			}
 		}
 

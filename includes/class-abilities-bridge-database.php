@@ -391,6 +391,10 @@ class Abilities_Bridge_Database {
 		if ( ! file_exists( $memories_dir ) ) {
 			wp_mkdir_p( $memories_dir ); // WordPress handles permissions automatically.
 		}
+
+		if ( class_exists( 'Abilities_Bridge_Attachments' ) ) {
+			Abilities_Bridge_Attachments::ensure_storage_dir();
+		}
 	}
 
 	/**
@@ -584,6 +588,19 @@ class Abilities_Bridge_Database {
 
 		if ( ! $conversation ) {
 			return false;
+		}
+
+		// Best-effort file cleanup first. File deletion failures must not block the DB purge.
+		if ( class_exists( 'Abilities_Bridge_Attachments' ) ) {
+			$attachments_deleted = Abilities_Bridge_Attachments::delete_conversation_attachments( $conversation_id );
+			if ( ! $attachments_deleted ) {
+				error_log( // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+					sprintf(
+						'Abilities Bridge attachment cleanup failed during permanent deletion for conversation ID %d.',
+						(int) $conversation_id
+					)
+				);
+			}
 		}
 
 		// Hard delete messages.

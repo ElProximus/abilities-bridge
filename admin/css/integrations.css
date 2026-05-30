@@ -191,6 +191,31 @@
 	color: #8a4e00;
 }
 
+.ab-status-disabled {
+	background: #f6f7f7;
+	color: #646970;
+}
+
+.ab-status-empty {
+	background: #f0f6fc;
+	color: #135e96;
+}
+
+.ab-plugin-card-disabled,
+.ab-plugin-card-empty {
+	border-color: #dcdcde;
+}
+
+.ab-plugin-note {
+	color: #646970;
+	font-size: 13px;
+	margin: 8px 0 0;
+}
+
+.ab-plugin-note a {
+	margin-left: 4px;
+}
+
 /* Toggle abilities button */
 .ab-plugin-body {
 	border-top: 1px solid #f0f0f1;
@@ -339,6 +364,53 @@
 	padding: 16px 20px;
 	border-top: 1px solid #f0f0f1;
 	background: #f9f9f9;
+	align-items: center;
+}
+
+.ab-profile-actions {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	width: 100%;
+}
+
+.ab-profile-action {
+	align-items: center;
+	background: #fff;
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+	display: flex;
+	gap: 12px;
+	justify-content: space-between;
+	padding: 12px;
+}
+
+.ab-profile-copy {
+	min-width: 0;
+}
+
+.ab-profile-copy strong {
+	color: #1d2327;
+	display: inline-block;
+	font-size: 13px;
+	margin-right: 8px;
+}
+
+.ab-profile-copy span {
+	color: #646970;
+	font-size: 12px;
+}
+
+.ab-profile-copy p {
+	color: #646970;
+	font-size: 12px;
+	line-height: 1.4;
+	margin: 4px 0 0;
+}
+
+.ab-no-actions {
+	color: #646970;
+	font-size: 13px;
 }
 
 .ab-btn-approve {
@@ -401,5 +473,10 @@
 
 	.ab-col-description {
 		display: none;
+	}
+
+	.ab-profile-action {
+		align-items: flex-start;
+		flex-direction: column;
 	}
 }
