@@ -604,22 +604,21 @@
 	 * Handle new conversation
 	 */
 	function handleNewConversation() {
-		if (confirm('Start a new conversation?')) {
-			currentConversationId = null;
-			$('#abilities-bridge-chat-messages').empty();
-			if (attachmentManager) {
-				attachmentManager.clear();
-			}
-
-			// Show welcome message (matches initial page load behavior)
-			appendMessage('assistant', 'Hi, I\'m your AI assistant. How can I help you today?');
-
-			$('#abilities-bridge-conversation-select').val('');
-			$('#abilities-bridge-conversation-info').hide();
-			$('#abilities-bridge-delete-conversation').hide();
-			$('#abilities-bridge-activity-history').hide(); // Hide activity history for new conversation
-			updateTokenMeter(); // Reset token bar immediately
+		currentConversationId = null;
+		$('#abilities-bridge-chat-messages').empty();
+		if (attachmentManager) {
+			attachmentManager.clear();
 		}
+
+		// Show welcome message (matches initial page load behavior)
+		appendMessage('assistant', 'Hi, I\'m your AI assistant. How can I help you today?');
+		appendMessage('system', 'Started a new conversation.');
+
+		$('#abilities-bridge-conversation-select').val('');
+		$('#abilities-bridge-conversation-info').hide();
+		$('#abilities-bridge-delete-conversation').hide();
+		$('#abilities-bridge-activity-history').hide(); // Hide activity history for new conversation
+		updateTokenMeter(); // Reset token bar immediately
 	}
 
 	/**
@@ -715,29 +714,63 @@
 	/**
 	 * Handle delete conversation
 	 */
+	let deleteConversationConfirmTimer = null;
+
 	function handleDeleteConversation() {
 		if (!currentConversationId) {
-			alert('No conversation selected');
+			appendMessage('system', 'No conversation selected.');
 			return;
 		}
 
-		if (confirm('⚠️ Delete this conversation? This cannot be undone.')) {
-			$.ajax({
-				url: abilitiesBridgeData.ajax_url,
-				type: 'POST',
-				data: {
-					action: 'abilities_bridge_delete_conversation',
-					nonce: abilitiesBridgeData.nonce,
-					conversation_id: currentConversationId
-				},
-				success: function(response) {
-					if (response.success) {
-						handleNewConversation();
-						loadConversations();
-					}
-				}
-			});
+		const $deleteButton = $('#abilities-bridge-delete-conversation');
+
+		if (!$deleteButton.hasClass('is-confirming-delete')) {
+			$deleteButton
+				.text('Click again to delete')
+				.addClass('is-confirming-delete')
+				.addClass('button-link-delete');
+			appendMessage('system', 'Click Delete Conversation again to permanently delete this conversation.');
+
+			clearTimeout(deleteConversationConfirmTimer);
+			deleteConversationConfirmTimer = setTimeout(function() {
+				$deleteButton
+					.text('Delete Conversation')
+					.removeClass('is-confirming-delete')
+					.removeClass('button-link-delete');
+			}, 5000);
+			return;
 		}
+
+		clearTimeout(deleteConversationConfirmTimer);
+		$deleteButton.prop('disabled', true).text('Deleting...');
+
+		$.ajax({
+			url: abilitiesBridgeData.ajax_url,
+			type: 'POST',
+			data: {
+				action: 'abilities_bridge_delete_conversation',
+				nonce: abilitiesBridgeData.nonce,
+				conversation_id: currentConversationId
+			},
+			success: function(response) {
+				if (response.success) {
+					handleNewConversation();
+					loadConversations();
+				} else {
+					handleError('Failed to delete conversation.');
+				}
+			},
+			error: function() {
+				handleError('Error deleting conversation. Please try again.');
+			},
+			complete: function() {
+				$deleteButton
+					.prop('disabled', false)
+					.text('Delete Conversation')
+					.removeClass('is-confirming-delete')
+					.removeClass('button-link-delete');
+			}
+		});
 	}
 
 	/**
@@ -766,11 +799,11 @@
 					// Update UI with model info
 					updateModelDescription(response.data.model_name, response.data.model_guidance);
 				} else {
-					alert('Error: ' + (response.data.message || 'Failed to change model'));
+					handleError(response.data.message || 'Failed to change model');
 				}
 			},
 			error: function() {
-				alert('Error: Failed to change model');
+				handleError('Failed to change model');
 			}
 		});
 	}
@@ -799,11 +832,11 @@
 
 					updateModelDescription(response.data.model_name, response.data.model_guidance);
 				} else {
-					alert('Error: ' + (response.data.message || 'Failed to change provider'));
+					handleError(response.data.message || 'Failed to change provider');
 				}
 			},
 			error: function() {
-				alert('Error: Failed to change provider');
+				handleError('Failed to change provider');
 			}
 		});
 	}

@@ -103,6 +103,9 @@ class Abilities_Bridge_Message_Processor {
 		$tool_errors       = array();
 		$has_pending_tools = false; // Track if we have tools that need results.
 		$tool_usage        = array(); // Track all tools used for activity log.
+		$last_tool_results = array(); // Track tool output for fallback responses.
+		$awaiting_tool_final_response      = false; // True after tool results are sent back to the model.
+		$received_post_tool_text_response  = false; // True once the model responds with text after tool execution.
 
 		while ( $iteration < $max_iterations ) {
 			++$iteration;
@@ -210,6 +213,10 @@ class Abilities_Bridge_Message_Processor {
 			// Collect text responses.
 			if ( ! empty( $text_responses ) ) {
 				$final_response .= implode( "\n\n", $text_responses ) . "\n\n";
+
+				if ( $awaiting_tool_final_response ) {
+					$received_post_tool_text_response = true;
+				}
 			}
 
 			// If no tool use, we're done.
@@ -309,6 +316,8 @@ class Abilities_Bridge_Message_Processor {
 
 			// Add tool results as user message - CRITICAL: This must always happen.
 			$conversation->add_user_message_array( $tool_results );
+			$last_tool_results = $tool_results;
+			$awaiting_tool_final_response = true;
 
 			// Mark tools as processed.
 			$has_pending_tools = false;
@@ -331,17 +340,17 @@ class Abilities_Bridge_Message_Processor {
 		// VALIDATION: Ensure we have a non-empty response.
 		// If response is empty and we executed tools, something went wrong.
 		$final_response_trimmed = trim( $final_response );
-		if ( empty( $final_response_trimmed ) && ! empty( $tool_usage ) ) {
+		if ( ! empty( $tool_usage ) && ( empty( $final_response_trimmed ) || ! $received_post_tool_text_response ) ) {
 			// Tools were executed but no final response received.
 			// Log this issue for debugging.
 			Abilities_Bridge_Logger::log_action(
 				$conversation_id,
-				'empty_response_with_tool_usage',
-				'Warning: Response was empty despite tool execution. Iterations: ' . $iteration
+				empty( $final_response_trimmed ) ? 'empty_response_with_tool_usage' : 'missing_post_tool_response',
+				'Warning: Tool execution completed without a final post-tool text response. Iterations: ' . $iteration
 			);
 
-			// Return a fallback message.
-			$final_response_trimmed = 'Tool execution completed. Response pending - please refresh or send another message.';
+			// Return a useful fallback instead of leaving the chat bubble stuck.
+			$final_response_trimmed = self::build_tool_result_fallback_response( $tool_usage, $last_tool_results );
 		}
 
 		return array(
@@ -350,6 +359,71 @@ class Abilities_Bridge_Message_Processor {
 			'iterations' => $iteration,
 			'tool_usage' => $tool_usage,
 		);
+	}
+
+	/**
+	 * Build a user-visible fallback when the model runs tools but returns no text.
+	 *
+	 * @param array $tool_usage Tool usage metadata.
+	 * @param array $tool_results MCP-style tool results.
+	 * @return string Fallback response.
+	 */
+	private static function build_tool_result_fallback_response( $tool_usage, $tool_results ) {
+		$tool_names = array();
+
+		foreach ( $tool_usage as $tool ) {
+			if ( ! empty( $tool['tool'] ) ) {
+				$tool_names[] = $tool['tool'];
+			}
+		}
+
+		$tool_names = array_values( array_unique( $tool_names ) );
+		$response   = 'I completed the requested tool action';
+
+		if ( ! empty( $tool_names ) ) {
+			$response .= ': ' . implode( ', ', $tool_names );
+		}
+
+		$response .= ".\n\nThe AI provider did not return a final text response, so here are the tool results:";
+
+		$result_summaries = array();
+		foreach ( $tool_results as $tool_result ) {
+			if ( empty( $tool_result['content'] ) ) {
+				continue;
+			}
+
+			$decoded = json_decode( $tool_result['content'], true );
+			if ( JSON_ERROR_NONE === json_last_error() ) {
+				$result_text = wp_json_encode( $decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
+			} else {
+				$result_text = (string) $tool_result['content'];
+			}
+
+			$result_text = trim( wp_strip_all_tags( $result_text ) );
+			if ( '' === $result_text ) {
+				continue;
+			}
+
+			if ( strlen( $result_text ) > 900 ) {
+				$result_text = substr( $result_text, 0, 900 ) . '...';
+			}
+
+			$result_summaries[] = $result_text;
+		}
+
+		if ( empty( $result_summaries ) ) {
+			return $response . "\n\nNo tool result details were available.";
+		}
+
+		foreach ( array_slice( $result_summaries, 0, 3 ) as $index => $summary ) {
+			$response .= "\n\nResult " . ( $index + 1 ) . ":\n" . $summary;
+		}
+
+		if ( count( $result_summaries ) > 3 ) {
+			$response .= "\n\nAdditional tool results were completed but are not shown here.";
+		}
+
+		return $response;
 	}
 
 	/**

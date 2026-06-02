@@ -39,7 +39,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	<div class="abilities-bridge-activity-history" id="abilities-bridge-activity-history" style="display: none;">
 		<div class="activity-history-header" id="activity-history-toggle">
 			<span class="activity-history-title">
-				📋 <span id="activity-history-label"><?php esc_html_e( 'Activity History', 'abilities-bridge' ); ?></span> (<span id="activity-count">0</span> <?php esc_html_e( 'tools used', 'abilities-bridge' ); ?>)
+				📋 <span id="activity-history-label"><?php esc_html_e( 'Activity History', 'abilities-bridge' ); ?></span> (<span id="activity-count">0</span> <?php esc_html_e( 'activity events', 'abilities-bridge' ); ?>)
 			</span>
 			<span class="activity-history-arrow">▼</span>
 		</div>

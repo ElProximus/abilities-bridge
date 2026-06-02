@@ -19,9 +19,6 @@
 		panel: '#abilities-bridge-bubble-panel',
 		close: '#abilities-bridge-bubble-close',
 		status: '#abilities-bridge-bubble-status',
-		provider: '#abilities-bridge-bubble-provider',
-		model: '#abilities-bridge-bubble-model',
-		modelGuidance: '#abilities-bridge-bubble-model-guidance',
 		conversationSelect: '#abilities-bridge-bubble-conversation-select',
 		newConversation: '#abilities-bridge-bubble-new',
 		messages: '#abilities-bridge-bubble-messages',
@@ -47,7 +44,6 @@
 		bindEvents();
 		initAttachments();
 		renderWelcome();
-		loadProviderState();
 		loadConversations();
 		setPanelOpen(false);
 		setStatus(abilitiesBridgeBubbleData.i18n.ready || 'Ready');
@@ -92,7 +88,7 @@
 
 		$(selectors.form).on('submit', handleSubmit);
 		$(selectors.newConversation).on('click', function() {
-			handleNewConversation(false);
+			handleNewConversation();
 		});
 		$(selectors.conversationSelect).on('change', function() {
 			const conversationId = $(this).val();
@@ -100,8 +96,6 @@
 				loadConversation(conversationId);
 			}
 		});
-		$(selectors.provider).on('change', handleProviderChange);
-		$(selectors.model).on('change', handleModelChange);
 		$(selectors.input).on('keydown', function(event) {
 			if (event.key === 'Enter' && !event.shiftKey) {
 				event.preventDefault();
@@ -217,11 +211,7 @@
 		return blocks.length ? blocks : message;
 	}
 
-	function handleNewConversation(skipConfirm) {
-		if (!skipConfirm && state.currentConversationId && !window.confirm(abilitiesBridgeBubbleData.i18n.newConversation)) {
-			return;
-		}
-
+	function handleNewConversation() {
 		setConversationId(null);
 		if (state.attachmentManager) {
 			state.attachmentManager.clear();
@@ -298,7 +288,6 @@
 
 			setConversationId(conversationId);
 			renderMessages(response.data.messages || []);
-			syncProviderFromConversation(response.data.conversation || {});
 			updateTokenMeter();
 			if (shouldAnnounce) {
 				setStatus(abilitiesBridgeBubbleData.i18n.conversationLoaded || 'Conversation loaded.');
@@ -351,147 +340,6 @@
 		$(selectors.send)
 			.prop('disabled', loading)
 			.text(loading ? abilitiesBridgeBubbleData.i18n.sending : abilitiesBridgeBubbleData.i18n.send);
-	}
-
-	function handleProviderChange() {
-		const provider = $(selectors.provider).val();
-		if (!provider) {
-			return;
-		}
-
-		$.ajax({
-			url: abilitiesBridgeBubbleData.ajaxUrl,
-			type: 'POST',
-			data: {
-				action: 'abilities_bridge_set_provider',
-				nonce: abilitiesBridgeBubbleData.nonce,
-				provider: provider
-			}
-		}).done(function(response) {
-			if (!response.success) {
-				handleError(extractErrorMessage(response));
-				return;
-			}
-
-			updateProviderOptions(response.data.provider);
-			updateModelOptions(response.data.available_models || {}, response.data.model);
-			updateModelGuidance(response.data.model_guidance || '');
-			setStatus(abilitiesBridgeBubbleData.i18n.providerChanged);
-			handleNewConversation(true);
-		}).fail(function() {
-			handleError(abilitiesBridgeBubbleData.i18n.connectionError);
-		});
-	}
-
-	function handleModelChange() {
-		const model = $(selectors.model).val();
-		if (!model) {
-			return;
-		}
-
-		$.ajax({
-			url: abilitiesBridgeBubbleData.ajaxUrl,
-			type: 'POST',
-			data: {
-				action: 'abilities_bridge_set_model',
-				nonce: abilitiesBridgeBubbleData.nonce,
-				model: model
-			}
-		}).done(function(response) {
-			if (!response.success) {
-				handleError(extractErrorMessage(response));
-				return;
-			}
-
-			setStatus(abilitiesBridgeBubbleData.i18n.modelChanged);
-			updateModelGuidance(response.data.model_guidance || '');
-			handleNewConversation(true);
-		}).fail(function() {
-			handleError(abilitiesBridgeBubbleData.i18n.connectionError);
-		});
-	}
-
-	function loadProviderState() {
-		$.ajax({
-			url: abilitiesBridgeBubbleData.ajaxUrl,
-			type: 'POST',
-			data: {
-				action: 'abilities_bridge_get_provider',
-				nonce: abilitiesBridgeBubbleData.nonce
-			}
-		}).done(function(response) {
-			if (!response.success) {
-				return;
-			}
-
-			updateProviderOptions(response.data.provider);
-			updateModelOptions(response.data.available_models || {}, response.data.model);
-			updateModelGuidance(response.data.model_guidance || '');
-			setStatus(`Using ${response.data.model_name}`);
-		}).fail(function() {
-			setStatus(abilitiesBridgeBubbleData.i18n.loadProviderFailed || 'Unable to load provider settings.');
-		});
-	}
-
-	function syncProviderFromConversation(conversation) {
-		if (!conversation || !conversation.provider) {
-			return;
-		}
-
-		if ($(selectors.provider).val() === conversation.provider) {
-			if (conversation.model) {
-				$(selectors.model).val(conversation.model);
-				setStatus(`Using ${$(selectors.model).find('option:selected').text() || conversation.model}`);
-			}
-			return;
-		}
-
-		$.ajax({
-			url: abilitiesBridgeBubbleData.ajaxUrl,
-			type: 'POST',
-			data: {
-				action: 'abilities_bridge_set_provider',
-				nonce: abilitiesBridgeBubbleData.nonce,
-				provider: conversation.provider
-			}
-		}).done(function(response) {
-			if (!response.success) {
-				return;
-			}
-
-			updateProviderOptions(response.data.provider);
-			updateModelOptions(response.data.available_models || {}, conversation.model || response.data.model);
-			updateModelGuidance(response.data.model_guidance || '');
-			setStatus(`Using ${$(selectors.model).find('option:selected').text() || response.data.model_name}`);
-		});
-	}
-
-	function updateProviderOptions(selectedProvider) {
-		const providers = [
-			{ value: 'anthropic', label: 'Anthropic' },
-			{ value: 'openai', label: 'OpenAI' }
-		];
-		const $select = $(selectors.provider);
-		$select.empty();
-
-		providers.forEach(function(provider) {
-			const selected = provider.value === selectedProvider ? ' selected' : '';
-			$select.append(`<option value="${provider.value}"${selected}>${provider.label}</option>`);
-		});
-	}
-
-	function updateModelOptions(models, selectedModel) {
-		const $select = $(selectors.model);
-		$select.empty();
-
-		Object.keys(models).forEach(function(modelId) {
-			const selected = modelId === selectedModel ? ' selected' : '';
-			$select.append(`<option value="${escapeAttribute(modelId)}"${selected}>${escapeHtml(models[modelId])}</option>`);
-		});
-	}
-
-	function updateModelGuidance(guidance) {
-		$(selectors.modelGuidance).text(guidance || '');
 	}
 
 	function updateTokenMeter() {
@@ -699,10 +547,6 @@
 				"'": '&#039;'
 			}[match];
 		});
-	}
-
-	function escapeAttribute(text) {
-		return escapeHtml(text).replace(/`/g, '&#096;');
 	}
 
 	$(init);

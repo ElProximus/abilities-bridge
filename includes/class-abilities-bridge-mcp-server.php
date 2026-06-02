@@ -19,6 +19,16 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Abilities_Bridge_MCP_Server {
 
 	/**
+	 * Whether the current request is unauthenticated discovery.
+	 *
+	 * Remote app builders such as ChatGPT need to inspect initialize/tools/list
+	 * before OAuth has completed. Tool execution still requires authentication.
+	 *
+	 * @var bool
+	 */
+	private $discovery_request = false;
+
+	/**
 	 * MCP Protocol version.
 	 */
 	const PROTOCOL_VERSION = '2025-03-26';
@@ -44,20 +54,6 @@ class Abilities_Bridge_MCP_Server {
 				return $this->error_response( -32700, 'Parse error: Invalid JSON', null );
 			}
 
-			// Check authentication after successful JSON parsing.
-			// This ensures auth errors are returned in proper JSON-RPC 2.0 format.
-			$oauth       = new Abilities_Bridge_MCP_OAuth();
-			$auth_result = $oauth->check_permission( $request );
-
-			if ( is_wp_error( $auth_result ) ) {
-				// Convert WP_Error to JSON-RPC error format.
-				return $this->error_response(
-					-32000, // Server error code for authentication failures.
-					$auth_result->get_error_message(),
-					isset( $body['id'] ) ? $body['id'] : null // Include ID if parsed.
-				);
-			}
-
 			// Validate JSON-RPC 2.0 format.
 			if ( ! isset( $body['jsonrpc'] ) || '2.0' !== $body['jsonrpc'] ) {
 				return $this->error_response( -32600, 'Invalid Request: Missing or invalid jsonrpc version', null );
@@ -70,6 +66,28 @@ class Abilities_Bridge_MCP_Server {
 			$method = $body['method'];
 			$params = isset( $body['params'] ) ? $body['params'] : array();
 			$id     = isset( $body['id'] ) ? $body['id'] : null;
+
+			// Check authentication after successful JSON-RPC parsing.
+			// Discovery methods are intentionally available before OAuth so
+			// remote app builders can discover actions and then start OAuth.
+			$this->discovery_request = false;
+			$oauth                   = new Abilities_Bridge_MCP_OAuth();
+			$auth_result             = $oauth->check_permission( $request );
+
+			if ( is_wp_error( $auth_result ) ) {
+				$public_methods = array( 'initialize', 'tools/list', 'ping' );
+
+				if ( in_array( $method, $public_methods, true ) ) {
+					$this->discovery_request = true;
+				} else {
+					// Convert WP_Error to JSON-RPC error format.
+					return $this->error_response(
+						-32000, // Server error code for authentication failures.
+						$auth_result->get_error_message(),
+						$id
+					);
+				}
+			}
 
 			// Route to appropriate handler.
 			switch ( $method ) {
@@ -175,6 +193,10 @@ class Abilities_Bridge_MCP_Server {
 	 * @return bool
 	 */
 	private function can_current_request_access_tool( $tool_name, $ability_name = null ) {
+		if ( $this->discovery_request ) {
+			return true;
+		}
+
 		if ( isset( $GLOBALS['abilities_bridge_oauth_scope'] ) && ! Abilities_Bridge_OAuth_Scopes::can_access_tool( $GLOBALS['abilities_bridge_oauth_scope'], $tool_name ) ) {
 			return false;
 		}
@@ -194,6 +216,48 @@ class Abilities_Bridge_MCP_Server {
 		}
 
 		return true;
+	}
+
+	/**
+	 * Convert a WordPress ability name into an MCP tool name.
+	 *
+	 * ChatGPT Apps rejects action names containing characters such as hyphens
+	 * and slashes, so keep exposed tool names to letters, numbers, and
+	 * underscores.
+	 *
+	 * @param string $ability_name WordPress ability name.
+	 * @return string MCP-safe tool name.
+	 */
+	private function get_tool_name_for_ability( $ability_name ) {
+		return 'ability_' . preg_replace( '/[^A-Za-z0-9_]/', '_', $ability_name );
+	}
+
+	/**
+	 * Resolve an MCP-safe tool name back to its WordPress ability name.
+	 *
+	 * @param string $tool_name MCP tool name.
+	 * @return string|null WordPress ability name, or null if not found.
+	 */
+	private function get_ability_name_for_tool( $tool_name ) {
+		if ( ! class_exists( 'Abilities_Bridge_Ability_Permissions' ) ) {
+			return null;
+		}
+
+		$enabled_abilities = Abilities_Bridge_Ability_Permissions::get_all_permissions( true );
+
+		foreach ( $enabled_abilities as $ability_config ) {
+			if ( empty( $ability_config['ability_name'] ) ) {
+				continue;
+			}
+
+			$ability_name = $ability_config['ability_name'];
+
+			if ( $this->get_tool_name_for_ability( $ability_name ) === $tool_name ) {
+				return $ability_name;
+			}
+		}
+
+		return null;
 	}
 
 	/**
@@ -289,8 +353,7 @@ class Abilities_Bridge_MCP_Server {
 						$input_schema['properties'] = new stdClass();
 					}
 
-					// Build tool name with ability_ prefix (convert / to _).
-					$tool_name = 'ability_' . str_replace( '/', '_', $ability_name );
+					$tool_name = $this->get_tool_name_for_ability( $ability_name );
 
 					if ( ! $this->can_current_request_access_tool( $tool_name, $ability_name ) ) {
 						continue;
@@ -328,9 +391,11 @@ class Abilities_Bridge_MCP_Server {
 
 		// Check if this is an ability call (starts with "ability_").
 		if ( strpos( $tool_name, 'ability_' ) === 0 ) {
-			// Extract ability name and convert underscores back to slashes.
-			$ability_name = substr( $tool_name, 8 ); // Remove "ability_" prefix.
-			$ability_name = str_replace( '_', '/', $ability_name );
+			$ability_name = $this->get_ability_name_for_tool( $tool_name );
+
+			if ( null === $ability_name ) {
+				throw new Exception( 'Unknown ability tool: ' . esc_html( $tool_name ) );
+			}
 
 			// Use orchestrator to execute ability with permission checks.
 			if ( class_exists( 'Abilities_Bridge_MCP_Orchestrator' ) ) {

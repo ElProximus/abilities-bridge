@@ -161,11 +161,8 @@ class Abilities_Bridge_Admin_Bubble {
 				'attachments' => Abilities_Bridge_Attachments::get_config(),
 				'i18n'    => array(
 					'welcome'            => __( 'Hi, I\'m your AI assistant. How can I help you today?', 'abilities-bridge' ),
-					'newConversation'    => __( 'Start a new conversation?', 'abilities-bridge' ),
 					'sending'            => __( 'Processing...', 'abilities-bridge' ),
 					'send'               => __( 'Send', 'abilities-bridge' ),
-					'providerChanged'    => __( 'Provider updated. Start a fresh conversation for best results.', 'abilities-bridge' ),
-					'modelChanged'       => __( 'Model updated. Start a fresh conversation for best results.', 'abilities-bridge' ),
 					'loadFailed'         => __( 'Unable to load that conversation right now.', 'abilities-bridge' ),
 					'connectionError'    => __( 'Unable to connect to the AI service. Please try again.', 'abilities-bridge' ),
 					'emptyConversations' => __( 'No saved conversations yet', 'abilities-bridge' ),
@@ -176,7 +173,6 @@ class Abilities_Bridge_Admin_Bubble {
 					'conversationLoaded' => __( 'Conversation loaded.', 'abilities-bridge' ),
 					'attention'          => __( 'Something needs attention.', 'abilities-bridge' ),
 					'loadConversationsFailed' => __( 'Unable to load saved conversations.', 'abilities-bridge' ),
-					'loadProviderFailed' => __( 'Unable to load provider settings.', 'abilities-bridge' ),
 					'loadTokenFailed'    => __( 'Unable to load token usage.', 'abilities-bridge' ),
 				),
 			)
@@ -204,18 +200,6 @@ class Abilities_Bridge_Admin_Bubble {
 				<div class="abilities-bridge-bubble-header abilities-bridge-bubble-header-compact">
 					<button type="button" id="abilities-bridge-bubble-close" class="abilities-bridge-bubble-close" aria-label="<?php esc_attr_e( 'Collapse chat bubble', 'abilities-bridge' ); ?>">&#8964;</button>
 				</div>
-
-				<div class="abilities-bridge-bubble-controls">
-					<div class="abilities-bridge-bubble-field-group">
-						<label for="abilities-bridge-bubble-provider"><?php esc_html_e( 'Provider', 'abilities-bridge' ); ?></label>
-						<select id="abilities-bridge-bubble-provider"></select>
-					</div>
-					<div class="abilities-bridge-bubble-field-group">
-						<label for="abilities-bridge-bubble-model"><?php esc_html_e( 'Model', 'abilities-bridge' ); ?></label>
-						<select id="abilities-bridge-bubble-model"></select>
-					</div>
-				</div>
-				<div id="abilities-bridge-bubble-model-guidance" class="abilities-bridge-bubble-model-guidance"></div>
 
 				<div class="abilities-bridge-bubble-conversations">
 					<label for="abilities-bridge-bubble-conversation-select"><?php esc_html_e( 'Saved Conversations', 'abilities-bridge' ); ?></label>
