@@ -5,6 +5,21 @@ All notable changes to Abilities Bridge will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-06-01
+
+### Added
+- User-visible fallback summary of tool results when the AI provider completes a tool action but returns no final text response, instead of leaving the chat on a generic "response pending" message.
+
+### Changed
+- MCP discovery methods (`initialize`, `tools/list`, `ping`) are now reachable before OAuth so remote app builders such as ChatGPT Apps can discover available actions and then start authentication. Tool execution (`tools/call`) still requires authentication.
+- Ability names are mapped to MCP-safe tool names through a single helper and resolved back by lookup against enabled abilities, replacing the lossy underscore/slash round-trip.
+- Simplified the floating chat bubble by removing the in-bubble provider and model selectors and their supporting code.
+- Replaced native `confirm()`/`alert()` dialogs in the admin chat with inline system messages and a two-click delete confirmation with error handling.
+- Relabeled the Activity History counter from "tools used" to "activity events".
+
+### Fixed
+- Ability tools whose names contain underscores are now invoked correctly; unknown ability tools now return a clear error instead of a malformed ability lookup.
+
 ## [1.3.0] - 2026-05-29
 
 ### Added

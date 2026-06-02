@@ -4,7 +4,7 @@ Tags: ai, claude, openai, mcp, abilities
 Requires at least: 6.2
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.3.0
+Stable tag: 1.3.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -134,6 +134,13 @@ Beacon Campaign Sender is a separate plugin that connects to Abilities Bridge as
 6. Ability permissions list with core read-only abilities and authorized abilities
 
 == Changelog ==
+
+= 1.3.1 =
+* MCP discovery (initialize, tools/list, ping) is now available before OAuth so remote app builders such as ChatGPT Apps can discover actions and then authenticate; running a tool still requires authentication
+* Ability names are now mapped to MCP-safe tool names and resolved back by lookup, fixing tool calls for abilities whose names contain underscores
+* Chat now returns a useful summary of tool results when the AI provider completes a tool action but returns no final text, instead of getting stuck on a "response pending" message
+* Simplified the floating chat bubble by removing the in-bubble provider and model selectors
+* Replaced browser confirm/alert popups in the admin chat with inline messages and a two-click delete confirmation
 
 = 1.3.0 =
 * Added chat image attachments — upload images or capture a browser-approved screenshot in the main chat and floating bubble (JPEG/PNG/WebP, up to 3 per message)
