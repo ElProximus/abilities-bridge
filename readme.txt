@@ -4,7 +4,7 @@ Tags: ai, claude, openai, mcp, abilities
 Requires at least: 6.2
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.3.1
+Stable tag: 1.3.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -135,6 +135,10 @@ Beacon Campaign Sender is a separate plugin that connects to Abilities Bridge as
 
 == Changelog ==
 
+= 1.3.2 =
+* MCP discovery (initialize, tools/list, ping) now requires authentication for every client, the same as running a tool; the unauthenticated pre-OAuth discovery added in 1.3.1 has been removed. This fixes Claude custom connectors (which connect authenticate-first); ChatGPT connects the same way via OAuth
+* Unauthenticated MCP requests now return an HTTP 401 with a WWW-Authenticate challenge so MCP clients reliably start the OAuth flow
+
 = 1.3.1 =
 * MCP discovery (initialize, tools/list, ping) is now available before OAuth so remote app builders such as ChatGPT Apps can discover actions and then authenticate; running a tool still requires authentication
 * Ability names are now mapped to MCP-safe tool names and resolved back by lookup, fixing tool calls for abilities whose names contain underscores
@@ -202,6 +206,7 @@ This plugin sends data to Anthropic's API (https://api.anthropic.com) or OpenAI'
 * Isolated memory storage with size limits (50MB total)
 * Full activity logging and audit trails
 * OAuth tokens encrypted with AES-256-CBC
+* MCP access requires authentication for every method, including discovery (initialize, tools/list, ping); unauthenticated requests receive an HTTP 401 OAuth challenge
 * All admin actions protected with nonce verification and capability checks
 
 = Data Retention =

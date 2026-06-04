@@ -1,3 +1,7 @@
+# Normalize line endings: store text files with LF in the repo and check out
+# LF on all platforms, preventing CRLF churn from mixed editors/machines.
+* text=auto eol=lf
+
 # Git export-ignore for clean GitHub releases
 # Files and directories marked with export-ignore are excluded from release archives
 

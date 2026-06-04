@@ -108,10 +108,22 @@ class Abilities_Bridge_Settings_Page {
 	/**
 	 * Get the WordPress-hosted MCP endpoint URL.
 	 *
+	 * The ChatGPT profile appends a ?profile=openai_chatgpt_mcp query argument
+	 * so the OpenAI/ChatGPT app builder is permitted to discover actions before
+	 * OAuth. Anthropic clients (such as Claude) use the plain endpoint, which
+	 * requires authentication and therefore triggers their OAuth flow.
+	 *
+	 * @param string $profile Optional MCP profile.
 	 * @return string
 	 */
-	private function get_mcp_endpoint_url() {
-		return rest_url( 'abilities-bridge-mcp/v1/mcp' );
+	private function get_mcp_endpoint_url( $profile = '' ) {
+		$url = rest_url( 'abilities-bridge-mcp/v1/mcp' );
+
+		if ( self::MCP_PROFILE_CHATGPT === $profile ) {
+			$url = add_query_arg( 'profile', self::MCP_PROFILE_CHATGPT, $url );
+		}
+
+		return $url;
 	}
 
 	/**
@@ -908,7 +920,7 @@ class Abilities_Bridge_Settings_Page {
 			set_transient( 'abilities_bridge_new_credentials', $credentials, 60 );
 
 			// Redirect to avoid resubmission (include nonce for credentials-generated flag).
-		// Note: wp_nonce_url() must NOT be used here - it calls esc_html() which
+			// Note: wp_nonce_url() must NOT be used here - it calls esc_html() which
 			// converts & to &amp;, breaking query parameters in the Location header.
 			$redirect_url = add_query_arg(
 				array(
@@ -969,8 +981,6 @@ class Abilities_Bridge_Settings_Page {
 			wp_safe_redirect( $redirect_url );
 			exit;
 		}
-
-
 	}
 
 	/**
@@ -1176,7 +1186,7 @@ class Abilities_Bridge_Settings_Page {
 	 * Render OpenAI ChatGPT MCP section.
 	 */
 	public function render_chatgpt_mcp_section() {
-		$mcp_endpoint      = $this->get_mcp_endpoint_url();
+		$mcp_endpoint      = $this->get_mcp_endpoint_url( self::MCP_PROFILE_CHATGPT );
 		$oauth             = new Abilities_Bridge_MCP_OAuth();
 		$existing_clients  = $oauth->get_user_clients( null, self::MCP_PROFILE_CHATGPT );
 		$generated_client_id     = null;

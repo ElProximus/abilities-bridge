@@ -141,7 +141,7 @@ class Abilities_Bridge_ChatGPT_MCP_Test_Page {
 			'debug'  => array(),
 		);
 
-		$mcp_endpoint                 = rest_url( 'abilities-bridge-mcp/v1/mcp' );
+		$mcp_endpoint                 = add_query_arg( 'profile', Abilities_Bridge_OAuth_Client_Manager::PROFILE_CHATGPT, rest_url( 'abilities-bridge-mcp/v1/mcp' ) );
 		$authorization_server_url     = home_url( '/.well-known/oauth-authorization-server?profile=' . rawurlencode( Abilities_Bridge_OAuth_Client_Manager::PROFILE_CHATGPT ) );
 		$protected_resource_url       = home_url( '/.well-known/oauth-protected-resource?profile=' . rawurlencode( Abilities_Bridge_OAuth_Client_Manager::PROFILE_CHATGPT ) );
 		$mcp_discovery_url            = home_url( '/.well-known/mcp?profile=' . rawurlencode( Abilities_Bridge_OAuth_Client_Manager::PROFILE_CHATGPT ) );

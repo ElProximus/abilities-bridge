@@ -5,6 +5,15 @@ All notable changes to Abilities Bridge will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] - 2026-06-03
+
+### Changed
+- MCP discovery methods (`initialize`, `tools/list`, `ping`) now require authentication for every client, just like `tools/call`. The unauthenticated pre-OAuth discovery introduced in 1.3.1 has been removed: every client (Claude and the ChatGPT app builder alike) completes OAuth before any call. Fixes Claude custom-connector authentication; ChatGPT connects the same way (authenticate-first).
+- Unauthenticated requests to the MCP endpoint now return HTTP 401 with a `WWW-Authenticate: Bearer resource_metadata="…"` challenge (RFC 9728 / MCP authorization), so spec-compliant MCP clients reliably initiate the OAuth flow. The JSON-RPC `-32000` error body is retained.
+
+### Removed
+- Removed the unauthenticated MCP discovery path and the associated `discovery_request` handling added in 1.3.1.
+
 ## [1.3.1] - 2026-06-01
 
 ### Added

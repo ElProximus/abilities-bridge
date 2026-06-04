@@ -19,16 +19,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Abilities_Bridge_MCP_Server {
 
 	/**
-	 * Whether the current request is unauthenticated discovery.
-	 *
-	 * Remote app builders such as ChatGPT need to inspect initialize/tools/list
-	 * before OAuth has completed. Tool execution still requires authentication.
-	 *
-	 * @var bool
-	 */
-	private $discovery_request = false;
-
-	/**
 	 * MCP Protocol version.
 	 */
 	const PROTOCOL_VERSION = '2025-03-26';
@@ -67,26 +57,18 @@ class Abilities_Bridge_MCP_Server {
 			$params = isset( $body['params'] ) ? $body['params'] : array();
 			$id     = isset( $body['id'] ) ? $body['id'] : null;
 
-			// Check authentication after successful JSON-RPC parsing.
-			// Discovery methods are intentionally available before OAuth so
-			// remote app builders can discover actions and then start OAuth.
-			$this->discovery_request = false;
-			$oauth                   = new Abilities_Bridge_MCP_OAuth();
-			$auth_result             = $oauth->check_permission( $request );
+			// All MCP methods require authentication. initialize, tools/list,
+			// ping and tools/call alike are gated, so every client (Claude and
+			// the ChatGPT app builder alike) must complete OAuth before any
+			// call — there is no unauthenticated discovery.
+			$oauth       = new Abilities_Bridge_MCP_OAuth();
+			$auth_result = $oauth->check_permission( $request );
 
 			if ( is_wp_error( $auth_result ) ) {
-				$public_methods = array( 'initialize', 'tools/list', 'ping' );
-
-				if ( in_array( $method, $public_methods, true ) ) {
-					$this->discovery_request = true;
-				} else {
-					// Convert WP_Error to JSON-RPC error format.
-					return $this->error_response(
-						-32000, // Server error code for authentication failures.
-						$auth_result->get_error_message(),
-						$id
-					);
-				}
+				// HTTP 401 + WWW-Authenticate so spec-compliant MCP clients
+				// initiate the OAuth flow (RFC 9728 / MCP authorization). The
+				// JSON-RPC -32000 body is retained for clients that read it.
+				return $this->auth_challenge_response( $auth_result->get_error_message(), $id );
 			}
 
 			// Route to appropriate handler.
@@ -193,10 +175,6 @@ class Abilities_Bridge_MCP_Server {
 	 * @return bool
 	 */
 	private function can_current_request_access_tool( $tool_name, $ability_name = null ) {
-		if ( $this->discovery_request ) {
-			return true;
-		}
-
 		if ( isset( $GLOBALS['abilities_bridge_oauth_scope'] ) && ! Abilities_Bridge_OAuth_Scopes::can_access_tool( $GLOBALS['abilities_bridge_oauth_scope'], $tool_name ) ) {
 			return false;
 		}
@@ -542,8 +520,38 @@ class Abilities_Bridge_MCP_Server {
 
 		return rest_ensure_response( $response_data );
 	}
+
+	/**
+	 * Create an authentication-required response.
+	 *
+	 * Returns the JSON-RPC -32000 error with an HTTP 401 status and a
+	 * WWW-Authenticate header pointing at the protected-resource metadata, so
+	 * spec-compliant MCP clients begin the OAuth flow (RFC 9728 / MCP
+	 * authorization). The JSON-RPC body is retained for clients that read it.
+	 *
+	 * @param string $message Error message.
+	 * @param mixed  $id      Request ID (string, number, or null).
+	 * @return WP_REST_Response Response object.
+	 */
+	private function auth_challenge_response( $message, $id = null ) {
+		$response = $this->error_response( -32000, $message, $id );
+
+		if ( $response instanceof WP_REST_Response ) {
+			$response->set_status( 401 );
+			$response->header( 'WWW-Authenticate', $this->build_www_authenticate_header() );
+		}
+
+		return $response;
+	}
+
+	/**
+	 * Build the WWW-Authenticate header value advertising the OAuth resource.
+	 *
+	 * @return string
+	 */
+	private function build_www_authenticate_header() {
+		$resource_metadata = home_url( '/.well-known/oauth-protected-resource' );
+
+		return sprintf( 'Bearer resource_metadata="%s"', esc_url_raw( $resource_metadata ) );
+	}
 }
-
-
-
-

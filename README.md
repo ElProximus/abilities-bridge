@@ -133,6 +133,7 @@ Abilities Bridge provides comprehensive security controls:
 - **Complete Logging** - All actions logged in Activity Log for transparency
 - **Nonce Verification** - AJAX requests protected with WordPress nonces
 - **Capability Checks** - Only users with `manage_options` can use AI features
+- **Authenticated MCP** - Every MCP method, including discovery (`initialize`, `tools/list`, `ping`), requires OAuth; unauthenticated requests receive an HTTP 401 with a `WWW-Authenticate` challenge
 - **Token Encryption** - OAuth tokens encrypted using AES-256-CBC
 - **Input Sanitization** - All user input properly sanitized and escaped
 

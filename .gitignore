@@ -1,3 +1,6 @@
+# Local experiment/build scratch (patches, built plugin zips, working notes)
+docs/experiments/
+
 # WordPress
 .htaccess
 wp-config.php
