@@ -5,6 +5,12 @@ All notable changes to Abilities Bridge will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.3] - 2026-07-04
+
+### Fixed
+- OAuth authorization failed with "Authorization request has expired or is invalid" on sites where an external object cache drop-in is installed but broken or evicting: the flow parked in-flight authorization requests and consent tokens in transients, which are cache-only when a drop-in is present. All in-flight OAuth state now lives in a DB-backed pending store (`Abilities_Bridge_Pending_Store`, non-autoloaded option, one-time-use take, expiry pruning via the daily OAuth cleanup cron), so the handshake survives any cache failure.
+- The one-time display of newly generated MCP client credentials never appeared on sites where an external object cache drop-in is installed but broken or evicting (e.g. LiteSpeed Cache object caching pointed at an unreachable Memcached/Redis backend). With an external object cache active, transients are never written to the database, so the secret was lost between the generate request and the redirect. Pending credentials are now stored in a non-autoloaded option (scoped to the generating user, 5-minute expiry), displayed once, then deleted.
+
 ## [1.3.2] - 2026-06-03
 
 ### Changed

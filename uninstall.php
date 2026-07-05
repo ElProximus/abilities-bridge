@@ -265,6 +265,12 @@ foreach ( $abilities_bridge_tables as $abilities_bridge_table_base ) {
 delete_transient( 'abilities_bridge_activation_redirect' );
 delete_transient( 'abilities_bridge_new_credentials' );
 
+// Delete pending one-time credentials display (stored as an option since 1.3.3).
+delete_option( 'abilities_bridge_new_credentials_pending' );
+
+// Delete pending in-flight OAuth state (stored as an option since 1.3.3).
+delete_option( 'abilities_bridge_oauth_pending' );
+
 // Unschedule any cron jobs.
 wp_clear_scheduled_hook( 'abilities_bridge_oauth_cleanup' );
 wp_clear_scheduled_hook( 'abilities_bridge_log_cleanup' );

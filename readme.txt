@@ -4,7 +4,7 @@ Tags: ai, claude, openai, mcp, abilities
 Requires at least: 6.2
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.3.2
+Stable tag: 1.3.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -134,6 +134,10 @@ Beacon Campaign Sender is a separate plugin that connects to Abilities Bridge as
 6. Ability permissions list with core read-only abilities and authorized abilities
 
 == Changelog ==
+
+= 1.3.3 =
+* Fixed the one-time display of newly generated MCP client credentials never appearing on sites with a broken or evicting external object cache (e.g. LiteSpeed/Redis/Memcached object caching). The pending credentials are now stored in the database instead of a transient, shown once, then deleted
+* Fixed OAuth authorization failing with "Authorization request has expired or is invalid" on the same sites: in-flight authorization requests and consent tokens are now stored in the database instead of transients, so connecting Claude or ChatGPT works even when the host's object cache is broken, restarted, or evicting
 
 = 1.3.2 =
 * MCP discovery (initialize, tools/list, ping) now requires authentication for every client, the same as running a tool; the unauthenticated pre-OAuth discovery added in 1.3.1 has been removed. This fixes Claude custom connectors (which connect authenticate-first); ChatGPT connects the same way via OAuth

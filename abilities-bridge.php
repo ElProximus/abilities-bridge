@@ -3,7 +3,7 @@
  * Plugin Name: Abilities Bridge
  * Plugin URI: https://aisystemadmin.com/abilities-bridge/
  * Description: MCP server for WordPress with admin interface. Connect Claude AI or OpenAI to execute WordPress Abilities with configurable permissions, activity monitoring, memory storage, and OAuth 2.0 authentication.
- * Version: 1.3.2
+ * Version: 1.3.3
  * Author: Joe Campbell
  * Author URI: https://aisystemadmin.com.
  * License: GPL v2 or later
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define plugin constants.
-define( 'ABILITIES_BRIDGE_VERSION', '1.3.2' );
+define( 'ABILITIES_BRIDGE_VERSION', '1.3.3' );
 define( 'ABILITIES_BRIDGE_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ABILITIES_BRIDGE_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'ABILITIES_BRIDGE_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
@@ -159,4 +159,7 @@ function abilities_bridge_run_oauth_cleanup() {
 	// Cleanup old OAuth logs.
 	$logger = new Abilities_Bridge_OAuth_Logger();
 	$logger->cleanup_old_logs();
+
+	// Cleanup expired pending OAuth state (abandoned authorization flows).
+	Abilities_Bridge_Pending_Store::cleanup_expired();
 }

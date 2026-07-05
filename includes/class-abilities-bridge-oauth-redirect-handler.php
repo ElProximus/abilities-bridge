@@ -71,11 +71,13 @@ class Abilities_Bridge_OAuth_Redirect_Handler {
 			$query_string = isset( $_SERVER['QUERY_STRING'] ) ? sanitize_text_field( wp_unslash( $_SERVER['QUERY_STRING'] ) ) : '';
 			parse_str( $query_string, $oauth_params );
 
-			// Generate cryptographically secure transient key.
+			// Generate cryptographically secure storage key.
 			$transient_key = 'abilities_bridge_oauth_params_' . bin2hex( random_bytes( 16 ) );
 
-			// Store OAuth parameters in transient (10 minute expiry).
-			set_transient( $transient_key, $oauth_params, 600 );
+			// Store OAuth parameters server-side (10 minute expiry). Stored in
+			// the DB-backed pending store, not a transient, so a broken or
+			// evicting external object cache cannot lose the request mid-flow.
+			Abilities_Bridge_Pending_Store::set( $transient_key, $oauth_params, 600 );
 
 			// Build admin page URL with only the transient key.
 			$admin_url = admin_url( 'admin.php?page=oauth-authorize&key=' . $transient_key );
@@ -137,6 +139,3 @@ class Abilities_Bridge_OAuth_Redirect_Handler {
 		}
 	}
 }
-
-
-

@@ -86,11 +86,9 @@ class Abilities_Bridge_OAuth_Authorization_Handler {
 			);
 		}
 
-		// Retrieve OAuth params from transient.
-		$oauth_params = get_transient( $transient_key );
-
-		// Delete transient immediately (one-time use for security).
-		delete_transient( $transient_key );
+		// Retrieve OAuth params from the pending store (one-time use:
+		// the entry is deleted on read for security).
+		$oauth_params = Abilities_Bridge_Pending_Store::take( $transient_key );
 
 		if ( false === $oauth_params || ! is_array( $oauth_params ) ) {
 			wp_die(
@@ -149,7 +147,7 @@ class Abilities_Bridge_OAuth_Authorization_Handler {
 
 		// Generate a unique consent token tied to this specific authorization request.
 		$consent_token = wp_generate_password( 32, false );
-		set_transient( 'ab_consent_' . $consent_token, $oauth_params, 300 ); // 5 minutes.
+		Abilities_Bridge_Pending_Store::set( 'ab_consent_' . $consent_token, $oauth_params, 300 ); // 5 minutes.
 
 		// Include consent screen template.
 		// Template receives: $client_id, $redirect_uri, $response_type, $code_challenge,
@@ -244,7 +242,7 @@ class Abilities_Bridge_OAuth_Authorization_Handler {
 			'oauth_nonce'           => $oauth_nonce, // Store nonce with params for verification.
 		);
 
-		set_transient( $transient_key, $oauth_params, 600 ); // 10 minutes.
+		Abilities_Bridge_Pending_Store::set( $transient_key, $oauth_params, 600 ); // 10 minutes.
 
 		// Build admin page URL with transient key and nonce.
 		$admin_url = admin_url( 'admin.php?page=oauth-authorize&key=' . $transient_key . '&_wpnonce=' . $oauth_nonce );
@@ -324,8 +322,9 @@ class Abilities_Bridge_OAuth_Authorization_Handler {
 			);
 		}
 
-		// Retrieve and validate the original OAuth params from the consent transient.
-		$oauth_params = get_transient( 'ab_consent_' . $consent_token );
+		// Retrieve and validate the original OAuth params from the consent
+		// store (one-time use: the entry is deleted on read).
+		$oauth_params = Abilities_Bridge_Pending_Store::take( 'ab_consent_' . $consent_token );
 		if ( ! $oauth_params || ! is_array( $oauth_params ) ) {
 			$logger->log(
 				'consent_transient_expired',
@@ -609,7 +608,6 @@ class Abilities_Bridge_OAuth_Authorization_Handler {
 			'chat.openai.com',
 			'chatgpt.com',
 		);
-
 
 		$allowed_hosts = apply_filters( 'abilities_bridge_oauth_allowed_redirect_hosts', array_values( array_unique( $allowed_hosts ) ), $client_id, $profile );
 
