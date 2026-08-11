@@ -265,8 +265,22 @@ foreach ( $abilities_bridge_tables as $abilities_bridge_table_base ) {
 delete_transient( 'abilities_bridge_activation_redirect' );
 delete_transient( 'abilities_bridge_new_credentials' );
 
-// Delete pending one-time credentials display (stored as an option since 1.3.3).
+// Delete pending one-time credentials display (stored as an option since
+// 1.3.3; one option per user — name suffixed with user ID — since the
+// concurrent-admin fix, plus the legacy shared name).
 delete_option( 'abilities_bridge_new_credentials_pending' );
+
+// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- prefix scan over per-user options has no options-API equivalent.
+$abilities_bridge_pending_credential_options = $wpdb->get_col(
+	$wpdb->prepare(
+		"SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s",
+		$wpdb->esc_like( 'abilities_bridge_new_credentials_pending_' ) . '%'
+	)
+);
+
+foreach ( (array) $abilities_bridge_pending_credential_options as $abilities_bridge_pending_credential_option ) {
+	delete_option( $abilities_bridge_pending_credential_option );
+}
 
 // Delete pending in-flight OAuth state (stored as an option since 1.3.3).
 delete_option( 'abilities_bridge_oauth_pending' );
