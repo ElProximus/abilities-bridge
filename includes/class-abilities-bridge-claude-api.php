@@ -234,6 +234,25 @@ Important: Abilities are managed by the site administrator. If an ability you ne
 		$response_body = wp_remote_retrieve_body( $response );
 		$data          = json_decode( $response_body, true );
 
+		// A failed request must be reported before any shape validation —
+		// error bodies have no 'content' key, so checking structure first
+		// turns a bad API key or rate limit into a vague "invalid response
+		// structure" marked retryable. Status carries retry policy instead:
+		// the caller retries only 429/5xx, never auth or bad-request errors.
+		if ( 200 !== $response_code ) {
+			$error_message = is_array( $data ) && isset( $data['error']['message'] ) ? $data['error']['message'] : 'Unknown API error';
+			$error_type    = is_array( $data ) && isset( $data['error']['type'] ) ? $data['error']['type'] : 'api_error';
+
+			return new WP_Error(
+				$error_type,
+				$error_message,
+				array(
+					'status' => $response_code,
+					'data'   => $data,
+				)
+			);
+		}
+
 		// Validate JSON parse.
 		if ( json_last_error() !== JSON_ERROR_NONE ) {
 			return new WP_Error(
@@ -255,20 +274,6 @@ Important: Abilities are managed by the site administrator. If an ability you ne
 				array(
 					'response_preview' => substr( $response_body, 0, 200 ),
 					'retryable'        => true,
-				)
-			);
-		}
-
-		if ( 200 !== $response_code ) {
-			$error_message = isset( $data['error']['message'] ) ? $data['error']['message'] : 'Unknown API error';
-			$error_type    = isset( $data['error']['type'] ) ? $data['error']['type'] : 'api_error';
-
-			return new WP_Error(
-				$error_type,
-				$error_message,
-				array(
-					'status' => $response_code,
-					'data'   => $data,
 				)
 			);
 		}
