@@ -586,7 +586,7 @@ class Abilities_Bridge_OAuth_Authorization_Handler {
 		}
 
 		$parsed = wp_parse_url( $redirect_uri );
-		$host   = isset( $parsed['host'] ) ? $parsed['host'] : '';
+		$host   = isset( $parsed['host'] ) ? strtolower( $parsed['host'] ) : '';
 
 		if ( empty( $host ) ) {
 			return false;
@@ -612,7 +612,16 @@ class Abilities_Bridge_OAuth_Authorization_Handler {
 		$allowed_hosts = apply_filters( 'abilities_bridge_oauth_allowed_redirect_hosts', array_values( array_unique( $allowed_hosts ) ), $client_id, $profile );
 
 		foreach ( $allowed_hosts as $allowed_host ) {
-			if ( $host === $allowed_host || strpos( $host, '.' . $allowed_host ) !== false ) {
+			$allowed_host = strtolower( $allowed_host );
+
+			if ( $host === $allowed_host ) {
+				return true;
+			}
+
+			// Subdomains must END with ".allowed-host" — a substring match would
+			// accept look-alikes such as "login.claude.ai.evil.com".
+			$suffix = '.' . $allowed_host;
+			if ( substr( $host, -strlen( $suffix ) ) === $suffix ) {
 				return true;
 			}
 		}
