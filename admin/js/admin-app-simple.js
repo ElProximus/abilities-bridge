@@ -12,6 +12,17 @@
 	let activityPollInterval = null;
 	let currentRequest = null;
 	let attachmentManager = null;
+	let currentJobToken = null;
+	let jobPollTimer = null;
+	let jobPollStartedAt = 0;
+	let supersedeJobToken = null;
+	let enqueueInFlight = false;
+	let stopRequestedDuringEnqueue = false;
+	let pendingReplacementPayload = null;
+	let consecutiveJobPollFailures = 0;
+	let jobPollRequestId = 0;
+	let foregroundRunInFlight = false;
+	const maxConsecutiveJobPollFailures = 12;
 	let displayedActivities = new Set(); // Track which activities are already displayed
 
 	/**
@@ -25,6 +36,7 @@
 		// Load conversations after a short delay to ensure page is ready
 		setTimeout(function() {
 			loadConversations();
+			resumeLatestJob();
 			updateTokenMeter(); // Update token meter on init
 		}, 500);
 	}
@@ -103,7 +115,7 @@
 	}
 
 	/**
-	 * Handle chat form submission - fallback to original method
+	 * Persist a chat turn and let the durable runner continue independently.
 	 */
 	function handleChatSubmit(e) {
 		e.preventDefault();
@@ -111,110 +123,102 @@
 		const message = $('#abilities-bridge-chat-input').val().trim();
 		const attachments = attachmentManager ? attachmentManager.getPayload() : [];
 		if (!message && attachments.length === 0) return;
+		const payload = {
+			message: message,
+			attachments: attachments,
+			planMode: $('#abilities-bridge-plan-mode').is(':checked')
+		};
+		if (enqueueInFlight && stopRequestedDuringEnqueue && pendingReplacementPayload) {
+			appendMessage('error', 'A replacement request is already waiting. The newer text was not queued.');
+			return;
+		}
 
-		setLoading(true);
 		appendMessage('user', buildLocalDisplayContent(message, attachments));
 		$('#abilities-bridge-chat-input').val('');
+		if (attachmentManager) {
+			attachmentManager.clear();
+		}
 
-		// Toggle Send/Stop buttons
+		if (enqueueInFlight && stopRequestedDuringEnqueue) {
+			pendingReplacementPayload = payload;
+			setLoading(true);
+			$('#abilities-bridge-send-button').hide();
+			$('#abilities-bridge-stop-button').hide();
+			showSimpleProgress();
+			$('#abilities-bridge-chat-loading').show().find('span').text('Saving the replacement request…');
+			return;
+		}
+
+		enqueueChatPayload(payload);
+	}
+
+	function enqueueChatPayload(payload) {
+		setLoading(true);
 		$('#abilities-bridge-send-button').hide();
 		$('#abilities-bridge-stop-button').show();
 
-		// Show simple progress
 		showSimpleProgress();
+		$('#abilities-bridge-chat-loading').show();
+		enqueueInFlight = true;
+		stopRequestedDuringEnqueue = false;
+		let replacementAfterStop = null;
 
-		// Start polling for real-time activity updates
-		startActivityPolling(currentConversationId);
-
-		// Use original AJAX method with longer timeout
-		currentRequest = $.ajax({
+		const request = $.ajax({
 			url: abilitiesBridgeData.ajax_url,
 			type: 'POST',
-			timeout: 180000, // 3 minutes
 			data: {
-				action: 'abilities_bridge_send_message',
+				action: 'abilities_bridge_chat_job_enqueue',
 				nonce: abilitiesBridgeData.nonce,
-				message: message,
-				attachments: JSON.stringify(attachments),
+				message: payload.message,
+				attachments: JSON.stringify(payload.attachments),
 				conversation_id: currentConversationId,
-				plan_mode: $('#abilities-bridge-plan-mode').is(':checked') ? 'true' : 'false'
-			},
-			success: function(response) {
-				if (response.success) {
+				plan_mode: payload.planMode ? 'true' : 'false',
+				supersede_job: supersedeJobToken || ''
+			}
+		});
+		currentRequest = request;
 
-					if (response.data.conversation_id && !currentConversationId) {
-						currentConversationId = response.data.conversation_id;
-						updateConversationInfo();
-						loadConversations();
-					}
-
-					// Display tool activities
-					if (response.data.tool_usage && response.data.tool_usage.length > 0) {
-						displayToolActivities(response.data.tool_usage);
-					} else {
-					}
-
-					appendMessage('assistant', response.data.response);
-					if (attachmentManager) {
-						attachmentManager.clear();
-					}
-
-					if (response.data.iterations && response.data.iterations > 1) {
-					}
-
-					// Handle summary continuation warnings
-					if (response.data.summary_status === 'first_warning') {
-						// 10k: First friendly warning
-						showSummaryWarning('first', response.data.conversation_id, response.data.token_usage.total);
-					} else if (response.data.summary_status === 'final_warning') {
-						// 15k: Final warning
-						showSummaryWarning('final', response.data.conversation_id, response.data.token_usage.total);
-					}
-
-					// Update token meter after message
-					updateTokenMeter();
-				} else {
-					var message = response.data.message || 'Unknown error';
-					if (response.data.error_data) {
-						message += '\n\nDetails:\n' + JSON.stringify(response.data.error_data, null, 2);
-					}
-					if (response.data.debug) {
-						message += '\n\nDebug:\n' + JSON.stringify(response.data.debug, null, 2);
-					}
-					handleError(message);
+		request.done(function(response) {
+			if (!response.success) {
+				if (stopRequestedDuringEnqueue) {
+					replacementAfterStop = pendingReplacementPayload;
+					pendingReplacementPayload = null;
+					stopRequestedDuringEnqueue = false;
 				}
-				// Stop activity polling
-				stopActivityPolling();
-				hideSimpleProgress();
-				setLoading(false);
-				// Toggle buttons back
-				$('#abilities-bridge-stop-button').hide();
-				$('#abilities-bridge-send-button').show();
-				// Load activity history for this conversation
-				loadActivityHistory();
-				// Auto-focus input field for next message
-				$('#abilities-bridge-chat-input').focus();
-			},
-			error: function(xhr, status, error) {
-				// Stop activity polling on error
-				stopActivityPolling();
-				if (status === 'timeout') {
-					// Timeout - show message but don't fail completely
-					appendMessage('system', '⏱️ Request is taking longer than expected. The AI may still be processing. Please wait a moment and refresh if needed.');
-				} else if (status === 'abort') {
-					// Request was aborted by user
-					appendMessage('system', '⏹ Request stopped by user.');
-				} else {
-					// Don't show technical error details to users
-				handleError('Unable to connect to AI service. Please try again.');
-				}
-				hideSimpleProgress();
-				setLoading(false);
-				// Toggle buttons back
-				$('#abilities-bridge-stop-button').hide();
-				$('#abilities-bridge-send-button').show();
-				// Auto-focus input field for next message
-				$('#abilities-bridge-chat-input').focus();
+				handleError(response.data && response.data.message ? response.data.message : 'Unable to queue the chat request.');
+				finishJobUi();
+				return;
+			}
+
+			currentConversationId = response.data.conversation_id;
+			updateConversationInfo();
+			loadConversations();
+			if (stopRequestedDuringEnqueue) {
+				supersedeJobToken = response.data.job;
+				cancelJobWithRetry(response.data.job);
+				stopRequestedDuringEnqueue = false;
+				replacementAfterStop = pendingReplacementPayload;
+				pendingReplacementPayload = null;
+				finishJobUi();
+				return;
+			}
+			supersedeJobToken = null;
+			startJobPolling(response.data.job, 0);
+		}).fail(function() {
+			if (stopRequestedDuringEnqueue) {
+				replacementAfterStop = pendingReplacementPayload;
+				pendingReplacementPayload = null;
+				stopRequestedDuringEnqueue = false;
+			}
+			handleError('Unable to queue the chat request. Please try again.');
+			finishJobUi();
+		}).always(function() {
+			if (currentRequest === request) {
+				currentRequest = null;
+			}
+			enqueueInFlight = false;
+			if (replacementAfterStop) {
+				enqueueChatPayload(replacementAfterStop);
 			}
 		});
 	}
@@ -223,13 +227,217 @@
 	 * Handle stop request
 	 */
 	function handleStopRequest() {
-		// Stop progress polling
-		stopActivityPolling();
-
-		if (currentRequest) {
-			currentRequest.abort();
-			currentRequest = null;
+		if (!currentJobToken && enqueueInFlight) {
+			stopRequestedDuringEnqueue = true;
+			finishJobUi();
+			appendMessage('system', 'Stopping as soon as this request is safely saved. You can enter a replacement question now.');
+			return;
 		}
+		if (!currentJobToken) return;
+
+		const stoppedJob = currentJobToken;
+		supersedeJobToken = stoppedJob;
+		currentJobToken = null;
+		clearTimeout(jobPollTimer);
+		finishJobUi();
+		appendMessage('system', 'Stopped. A step that was already running may still finish (and be billed) at the provider; its result was discarded.');
+
+		cancelJobWithRetry(stoppedJob);
+	}
+
+	function cancelJobWithRetry(jobToken, attempt) {
+		const retryAttempt = attempt || 0;
+		$.post(abilitiesBridgeData.ajax_url, {
+			action: 'abilities_bridge_chat_job_cancel',
+			nonce: abilitiesBridgeData.nonce,
+			job: jobToken
+		}).done(function(response) {
+			if (!response.success && retryAttempt < 4) {
+				setTimeout(function() { cancelJobWithRetry(jobToken, retryAttempt + 1); }, Math.pow(2, retryAttempt) * 1000);
+			} else if (!response.success) {
+				appendMessage('error', 'The Stop request could not be confirmed. It will be attempted again if you send a replacement question.');
+			}
+		}).fail(function() {
+			if (retryAttempt < 4) {
+				setTimeout(function() { cancelJobWithRetry(jobToken, retryAttempt + 1); }, Math.pow(2, retryAttempt) * 1000);
+			} else {
+				appendMessage('error', 'The Stop request could not be confirmed. It will be attempted again if you send a replacement question.');
+			}
+		});
+	}
+
+	function startJobPolling(jobToken, elapsed) {
+		currentJobToken = jobToken;
+		jobPollStartedAt = Date.now() - ((elapsed || 0) * 1000);
+		consecutiveJobPollFailures = 0;
+		pollJob();
+	}
+
+	function pollJob() {
+		if (!currentJobToken) return;
+		const token = currentJobToken;
+		clearTimeout(jobPollTimer);
+		jobPollTimer = null;
+		const requestId = ++jobPollRequestId;
+
+		$.post(abilitiesBridgeData.ajax_url, {
+			action: 'abilities_bridge_chat_job_status',
+			nonce: abilitiesBridgeData.nonce,
+			job: token
+		}).done(function(response) {
+			if (token !== currentJobToken || requestId !== jobPollRequestId) return;
+			if (!response.success) {
+				currentJobToken = null;
+				handleError(response.data && response.data.message ? response.data.message : 'Unable to read the background chat status.');
+				finishJobUi();
+				return;
+			}
+			consecutiveJobPollFailures = 0;
+			const job = response.data;
+			const elapsed = Math.max(job.elapsed || 0, Math.floor((Date.now() - jobPollStartedAt) / 1000));
+			const activity = job.last_activity || (job.status === 'preparing' ? 'Saving request' : 'Working');
+			$('#abilities-bridge-chat-loading span').text(activity + ' · ' + formatElapsed(elapsed));
+
+			if (job.status === 'missing') {
+				currentJobToken = null;
+				appendMessage('error', 'This saved background job is no longer available. Reload the conversation to check for its final answer.');
+				finishJobUi();
+				return;
+			}
+
+			if (job.status === 'completed') {
+				currentJobToken = null;
+				loadConversation(job.conversation_id);
+				finishJobUi();
+				return;
+			}
+			if (job.status === 'failed' || job.status === 'uncertain') {
+				currentJobToken = null;
+				appendMessage(job.status === 'uncertain' ? 'system' : 'error', job.error_message || (job.status === 'uncertain' ? 'The last step has an uncertain outcome and may have been billed. Check the affected data before trying again.' : 'The background chat job failed.'));
+				finishJobUi();
+				return;
+			}
+			if (job.status === 'cancelled') {
+				currentJobToken = null;
+				finishJobUi();
+				return;
+			}
+
+			if (job.background_unavailable) {
+				renderForegroundOffer(token);
+			} else {
+				$('#abilities-bridge-run-foreground').remove();
+			}
+
+			const delay = elapsed >= 60 ? 5000 : 2000;
+			jobPollTimer = setTimeout(pollJob, delay);
+		}).fail(function() {
+			if (token === currentJobToken && requestId === jobPollRequestId) {
+				consecutiveJobPollFailures++;
+				if (consecutiveJobPollFailures >= maxConsecutiveJobPollFailures) {
+					currentJobToken = null;
+					appendMessage('error', 'Status checks repeatedly failed. The saved job may still be running; reload or reopen this conversation to resume monitoring.');
+					finishJobUi();
+					return;
+				}
+				jobPollTimer = setTimeout(pollJob, 5000);
+			}
+		});
+	}
+
+	function runJobInForeground(token) {
+		if (foregroundRunInFlight) return;
+		foregroundRunInFlight = true;
+		clearTimeout(jobPollTimer);
+		jobPollTimer = null;
+		++jobPollRequestId;
+		$('#abilities-bridge-run-foreground').prop('disabled', true).text('Starting foreground run…');
+		currentRequest = $.post(abilitiesBridgeData.ajax_url, {
+			action: 'abilities_bridge_chat_job_run_foreground',
+			nonce: abilitiesBridgeData.nonce,
+			job: token
+		}).done(function(response) {
+			if (!response.success) {
+				handleError(response.data && response.data.message ? response.data.message : 'The foreground takeover did not start.');
+			}
+		}).fail(function() {
+			handleError('The foreground takeover request failed. Background monitoring will continue.');
+		}).always(function() {
+			currentRequest = null;
+			foregroundRunInFlight = false;
+			$('#abilities-bridge-run-foreground').remove();
+			clearTimeout(jobPollTimer);
+			jobPollTimer = null;
+			if (token === currentJobToken) pollJob();
+		});
+	}
+
+	function renderForegroundOffer(token) {
+		if (foregroundRunInFlight) return;
+		if ($('#abilities-bridge-run-foreground').length) return;
+		$('<button>', {
+			id: 'abilities-bridge-run-foreground',
+			type: 'button',
+			class: 'button button-secondary',
+			text: 'Run this saved request in the foreground'
+		}).on('click', function() {
+			runJobInForeground(token);
+		}).appendTo('#abilities-bridge-chat-loading');
+	}
+
+	function resumeLatestJob() {
+		if (currentConversationId || currentJobToken) return;
+		$.post(abilitiesBridgeData.ajax_url, {
+			action: 'abilities_bridge_chat_job_resume',
+			nonce: abilitiesBridgeData.nonce,
+			conversation_id: 0
+		}).done(function(response) {
+			if (!response.success || !response.data.job) return;
+			const job = response.data.job;
+			if (['preparing', 'queued', 'dispatching', 'running', 'uncertain'].indexOf(job.status) !== -1) {
+				loadConversation(job.conversation_id);
+			}
+		});
+	}
+
+	function resumeJob(conversationId) {
+		if (!conversationId || currentJobToken) return;
+		$.post(abilitiesBridgeData.ajax_url, {
+			action: 'abilities_bridge_chat_job_resume',
+			nonce: abilitiesBridgeData.nonce,
+			conversation_id: conversationId
+		}).done(function(response) {
+			if (!response.success || !response.data.job) return;
+			const job = response.data.job;
+			if (['preparing', 'queued', 'dispatching', 'running'].indexOf(job.status) !== -1) {
+				setLoading(true);
+				$('#abilities-bridge-send-button').hide();
+				$('#abilities-bridge-stop-button').show();
+				showSimpleProgress();
+				$('#abilities-bridge-chat-loading').show();
+				startJobPolling(job.job, job.elapsed);
+			} else if (job.status === 'uncertain') {
+				appendMessage('system', job.error_message || 'The prior request has an uncertain outcome and may have been billed.');
+			}
+		});
+	}
+
+	function finishJobUi() {
+		stopActivityPolling();
+		hideSimpleProgress();
+		$('#abilities-bridge-chat-loading').hide();
+		$('#abilities-bridge-run-foreground').remove();
+		setLoading(false);
+		$('#abilities-bridge-stop-button').hide();
+		$('#abilities-bridge-send-button').show();
+		loadActivityHistory();
+		updateTokenMeter();
+		$('#abilities-bridge-chat-input').focus();
+	}
+
+	function formatElapsed(seconds) {
+		const minutes = Math.floor(seconds / 60);
+		return minutes + ':' + String(seconds % 60).padStart(2, '0');
 	}
 
 	/**
@@ -383,6 +591,7 @@
 		if (attachmentManager) {
 			attachmentManager.setDisabled(loading);
 		}
+		$('#abilities-bridge-new-conversation, #abilities-bridge-conversation-select, #abilities-bridge-delete-conversation').prop('disabled', loading);
 
 		if (loading) {
 			$input.prop('disabled', true);
@@ -658,6 +867,7 @@
 					loadActivityHistory(); // Load activity history for this conversation
 
 					appendMessage('system', '📂 Conversation loaded successfully.');
+					resumeJob(conversationId);
 				}
 			}
 		});
@@ -701,6 +911,7 @@
 					updateConversationInfo();
 					updateTokenMeter();
 					loadActivityHistory(); // Reload activity history
+					resumeJob(conversationId);
 				} else {
 					handleError('Failed to reload conversation: ' + (response.data && response.data.message ? response.data.message : 'Unknown error'));
 				}
@@ -1073,7 +1284,7 @@
 				<div class="activity-history-item ${statusClass}">
 					<div class="activity-history-header">
 						<span class="activity-history-icon">${icon}</span>
-						<span class="activity-history-function">${activity.function}</span>
+						<span class="activity-history-function">${escapeHtml(activity.function || '')}</span>
 						<span class="activity-history-timestamp">${timestamp}</span>
 					</div>
 					<div class="activity-history-description">${escapeHtml(activity.description)}</div>

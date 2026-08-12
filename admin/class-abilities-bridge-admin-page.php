@@ -40,6 +40,11 @@ class Abilities_Bridge_Admin_Page {
 		add_action( 'admin_menu', array( $this, 'add_admin_menu' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 		add_action( 'wp_ajax_abilities_bridge_send_message', array( $this, 'ajax_send_message' ) );
+		add_action( 'wp_ajax_abilities_bridge_chat_job_enqueue', array( $this, 'ajax_chat_job_enqueue' ) );
+		add_action( 'wp_ajax_abilities_bridge_chat_job_status', array( $this, 'ajax_chat_job_status' ) );
+		add_action( 'wp_ajax_abilities_bridge_chat_job_cancel', array( $this, 'ajax_chat_job_cancel' ) );
+		add_action( 'wp_ajax_abilities_bridge_chat_job_resume', array( $this, 'ajax_chat_job_resume' ) );
+		add_action( 'wp_ajax_abilities_bridge_chat_job_run_foreground', array( $this, 'ajax_chat_job_run_foreground' ) );
 		add_action( 'wp_ajax_abilities_bridge_new_conversation', array( $this, 'ajax_new_conversation' ) );
 		add_action( 'wp_ajax_abilities_bridge_load_conversation', array( $this, 'ajax_load_conversation' ) );
 		add_action( 'wp_ajax_abilities_bridge_delete_conversation', array( $this, 'ajax_delete_conversation' ) );
@@ -77,7 +82,6 @@ class Abilities_Bridge_Admin_Page {
 			'abilities-bridge-settings',
 			array( new Abilities_Bridge_Settings_Page(), 'render_page' )
 		);
-
 	}
 
 	/**
@@ -91,12 +95,12 @@ class Abilities_Bridge_Admin_Page {
 			return;
 		}
 
-		$styles_version = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/css/admin-styles.css' );
-		$progress_version = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/css/progress-styles.css' );
-		$bubbles_version = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/css/chat-bubbles.css' );
+		$styles_version      = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/css/admin-styles.css' );
+		$progress_version    = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/css/progress-styles.css' );
+		$bubbles_version     = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/css/chat-bubbles.css' );
 		$attachments_version = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/js/chat-attachments.js' );
-		$app_version = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/js/admin-app-simple.js' );
-		$dashboard_version = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/js/dashboard.js' );
+		$app_version         = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/js/admin-app-simple.js' );
+		$dashboard_version   = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/js/dashboard.js' );
 
 		wp_enqueue_style(
 			'abilities-bridge-styles',
@@ -147,9 +151,9 @@ class Abilities_Bridge_Admin_Page {
 			'abilities-bridge-app',
 			'abilitiesBridgeData',
 			array(
-				'ajax_url' => admin_url( 'admin-ajax.php' ),
-				'nonce'    => wp_create_nonce( 'abilities_bridge_nonce' ),
-				'user_id'  => get_current_user_id(),
+				'ajax_url'    => admin_url( 'admin-ajax.php' ),
+				'nonce'       => wp_create_nonce( 'abilities_bridge_nonce' ),
+				'user_id'     => get_current_user_id(),
 				'attachments' => Abilities_Bridge_Attachments::get_config(),
 			)
 		);
@@ -247,7 +251,7 @@ class Abilities_Bridge_Admin_Page {
 		$message         = isset( $_POST['message'] ) ? sanitize_textarea_field( wp_unslash( $_POST['message'] ) ) : '';
 		$conversation_id = isset( $_POST['conversation_id'] ) ? intval( wp_unslash( $_POST['conversation_id'] ) ) : null;
 		$plan_mode       = isset( $_POST['plan_mode'] ) && sanitize_text_field( wp_unslash( $_POST['plan_mode'] ) ) === 'true';
-		$attachments_raw = isset( $_POST['attachments'] ) ? $_POST['attachments'] : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$attachments_raw = isset( $_POST['attachments'] ) ? wp_unslash( $_POST['attachments'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 		$attachments     = Abilities_Bridge_Attachments::parse_incoming_attachments( $attachments_raw );
 
 		if ( is_wp_error( $attachments ) ) {
@@ -348,6 +352,350 @@ class Abilities_Bridge_Admin_Page {
 		}
 
 		wp_send_json_success( $response_data );
+	}
+
+	/**
+	 * AJAX: Persist and dispatch a durable chat job.
+	 *
+	 * @throws RuntimeException When an enqueue checkpoint cannot be persisted.
+	 */
+	public function ajax_chat_job_enqueue() {
+		$this->verify_chat_job_browser_request();
+
+		// The shared verifier above checks the nonce before any request field is read.
+		// phpcs:disable WordPress.Security.NonceVerification.Missing
+		$message         = isset( $_POST['message'] ) ? sanitize_textarea_field( wp_unslash( $_POST['message'] ) ) : '';
+		$conversation_id = isset( $_POST['conversation_id'] ) ? absint( wp_unslash( $_POST['conversation_id'] ) ) : 0;
+		$plan_mode       = isset( $_POST['plan_mode'] ) && 'true' === sanitize_text_field( wp_unslash( $_POST['plan_mode'] ) );
+		$attachments_raw = isset( $_POST['attachments'] ) ? wp_unslash( $_POST['attachments'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- validated by attachment parser.
+		$supersede_token = isset( $_POST['supersede_job'] ) ? sanitize_text_field( wp_unslash( $_POST['supersede_job'] ) ) : '';
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
+		$attachments = Abilities_Bridge_Attachments::parse_incoming_attachments( $attachments_raw );
+
+		if ( is_wp_error( $attachments ) ) {
+			wp_send_json_error( array( 'message' => $attachments->get_error_message() ) );
+		}
+		if ( '' === trim( $message ) && empty( $attachments ) ) {
+			wp_send_json_error( array( 'message' => __( 'Message or image attachment required.', 'abilities-bridge' ) ) );
+		}
+		if ( strlen( $message ) > 10000 ) {
+			wp_send_json_error( array( 'message' => __( 'Message too long (max 10,000 characters).', 'abilities-bridge' ) ) );
+		}
+		if ( $conversation_id && ! $this->get_accessible_conversation( $conversation_id ) ) {
+			wp_send_json_error( array( 'message' => __( 'Conversation not found.', 'abilities-bridge' ) ) );
+		}
+
+		$conversation = new Abilities_Bridge_Conversation( $conversation_id );
+		if ( ! $conversation_id ) {
+			$conversation_id = (int) $conversation->create( Abilities_Bridge_Attachments::derive_title( $message, $attachments ) );
+			if ( ! $conversation_id ) {
+				wp_send_json_error( array( 'message' => __( 'Failed to create conversation.', 'abilities-bridge' ) ) );
+			}
+		}
+
+		$locked = Abilities_Bridge_Chat_Jobs::acquire_conversation_lock( $conversation_id, 3 );
+		if ( ! $locked ) {
+			wp_send_json_error( array( 'message' => __( 'Another chat request is being prepared. Please try again.', 'abilities-bridge' ) ) );
+		}
+
+		$payload = null;
+		$error   = null;
+		try {
+			if ( '' !== $supersede_token ) {
+				$superseded = Abilities_Bridge_Chat_Jobs::get_by_token( $supersede_token );
+				if ( $superseded && get_current_user_id() === (int) $superseded->user_id && $conversation_id === (int) $superseded->conversation_id ) {
+					Abilities_Bridge_Chat_Jobs::request_cancel( $superseded->id );
+				}
+			}
+			$blocker = Abilities_Bridge_Chat_Jobs::find_blocking( $conversation_id );
+			if ( $blocker ) {
+				$result = Abilities_Bridge_Chat_Jobs::sweep( $blocker->id );
+				if ( 'requeued' === $result ) {
+					Abilities_Bridge_Chat_Job_Runner::dispatch( $blocker->id, true );
+				}
+				$blocker = Abilities_Bridge_Chat_Jobs::find_blocking( $conversation_id );
+			}
+			if ( $blocker ) {
+				throw new RuntimeException( __( 'This conversation already has a question in progress.', 'abilities-bridge' ) );
+			}
+
+			$conversation_data = Abilities_Bridge_Database::get_conversation( $conversation_id, get_current_user_id() );
+			$provider          = ! empty( $conversation_data->provider ) ? $conversation_data->provider : Abilities_Bridge_AI_Provider::get_current_provider();
+			$model             = ! empty( $conversation_data->model ) ? $conversation_data->model : Abilities_Bridge_AI_Provider::get_selected_model( $provider );
+			$job               = Abilities_Bridge_Chat_Jobs::create_preparing(
+				array(
+					'conversation_id' => $conversation_id,
+					'user_id'         => get_current_user_id(),
+					'provider'        => $provider,
+					'model'           => $model,
+					'plan_mode'       => $plan_mode,
+				)
+			);
+			if ( is_wp_error( $job ) ) {
+				throw new RuntimeException( $job->get_error_message() );
+			}
+
+			$image_blocks = Abilities_Bridge_Attachments::store_attachments( $conversation_id, $attachments );
+			if ( is_wp_error( $image_blocks ) ) {
+				Abilities_Bridge_Chat_Jobs::delete_preparing( $job->id );
+				throw new RuntimeException( $image_blocks->get_error_message() );
+			}
+			if ( ! Abilities_Bridge_Chat_Jobs::store_preparing_attachments( $job->id, wp_json_encode( $image_blocks ) ) ) {
+				Abilities_Bridge_Attachments::delete_attachment_blocks( $conversation_id, $image_blocks );
+				Abilities_Bridge_Chat_Jobs::delete_preparing( $job->id );
+				throw new RuntimeException( __( 'The attachment checkpoint could not be saved.', 'abilities-bridge' ) );
+			}
+
+			$processor  = new Abilities_Bridge_Message_Processor();
+			$message_id = $processor->begin( $conversation, $message, $plan_mode, $image_blocks, $job->id );
+			if ( is_wp_error( $message_id ) ) {
+				Abilities_Bridge_Attachments::delete_attachment_blocks( $conversation_id, $image_blocks );
+				Abilities_Bridge_Chat_Jobs::delete_preparing( $job->id );
+				throw new RuntimeException( $message_id->get_error_message() );
+			}
+
+			if ( ! Abilities_Bridge_Chat_Jobs::activate_prepared( $job->id, $message_id, wp_json_encode( $image_blocks ) ) ) {
+				Abilities_Bridge_Database::delete_message( $message_id, $conversation_id );
+				Abilities_Bridge_Attachments::delete_attachment_blocks( $conversation_id, $image_blocks );
+				Abilities_Bridge_Chat_Jobs::delete_preparing( $job->id );
+				throw new RuntimeException( __( 'The chat job could not be queued safely.', 'abilities-bridge' ) );
+			}
+
+			Abilities_Bridge_Chat_Jobs::mark_superseded( $conversation_id, $job->id );
+			Abilities_Bridge_Logger::log_action( $conversation_id, 'queued message for AI' );
+			Abilities_Bridge_Chat_Job_Runner::dispatch( $job->id, true );
+			$payload = array(
+				'job'             => $job->public_token,
+				'conversation_id' => $conversation_id,
+				'status'          => 'queued',
+			);
+		} catch ( Throwable $throwable ) {
+			$error = $throwable->getMessage();
+		} finally {
+			Abilities_Bridge_Chat_Jobs::release_conversation_lock( $conversation_id );
+		}
+
+		if ( null !== $error ) {
+			wp_send_json_error( array( 'message' => $error ) );
+		}
+		wp_send_json_success( $payload );
+	}
+
+	/**
+	 * AJAX: Poll one durable job.
+	 */
+	public function ajax_chat_job_status() {
+		$this->verify_chat_job_browser_request();
+		$job = $this->get_owned_job_from_request();
+
+		$sweep = Abilities_Bridge_Chat_Jobs::sweep( $job->id );
+		$job   = Abilities_Bridge_Chat_Jobs::get( $job->id );
+		if ( $job && 'uncertain' === $job->status && 'provider_inflight' === $job->phase && 'openai' === $job->provider && ! empty( $job->provider_response_id ) ) {
+			$this->maybe_recover_openai_job( $job );
+			$job = Abilities_Bridge_Chat_Jobs::get( $job->id );
+		}
+		if ( $job && 'queued' === $job->status && ( 'requeued' === $sweep || Abilities_Bridge_Chat_Jobs::age( $job ) >= 15 ) ) {
+			Abilities_Bridge_Chat_Job_Runner::dispatch( $job->id );
+			$job = Abilities_Bridge_Chat_Jobs::get( $job->id );
+		}
+
+		wp_send_json_success( $this->format_chat_job( $job ) );
+	}
+
+	/**
+	 * AJAX: Stop a job immediately and free the conversation for another turn.
+	 */
+	public function ajax_chat_job_cancel() {
+		$this->verify_chat_job_browser_request();
+		$job = $this->get_owned_job_from_request();
+		$job = Abilities_Bridge_Chat_Jobs::request_cancel( $job->id );
+
+		wp_send_json_success( $this->format_chat_job( $job ) );
+	}
+
+	/**
+	 * AJAX: Find a resumable job for a conversation after page load.
+	 */
+	public function ajax_chat_job_resume() {
+		$this->verify_chat_job_browser_request();
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- verified by shared guard above.
+		$conversation_id = isset( $_POST['conversation_id'] ) ? absint( wp_unslash( $_POST['conversation_id'] ) ) : 0;
+		if ( $conversation_id && ! $this->get_accessible_conversation( $conversation_id ) ) {
+			wp_send_json_success( array( 'job' => null ) );
+		}
+
+		$job = $conversation_id
+			? Abilities_Bridge_Chat_Jobs::find_resumable( $conversation_id, get_current_user_id() )
+			: Abilities_Bridge_Chat_Jobs::find_latest_resumable_for_user( get_current_user_id() );
+		if ( $job && ! $this->get_accessible_conversation( $job->conversation_id ) ) {
+			$job = null;
+		}
+		if ( $job ) {
+			Abilities_Bridge_Chat_Jobs::sweep( $job->id );
+			$job = Abilities_Bridge_Chat_Jobs::get( $job->id );
+			if ( 'queued' === $job->status ) {
+				Abilities_Bridge_Chat_Job_Runner::dispatch( $job->id );
+			}
+		}
+
+		wp_send_json_success( array( 'job' => $job ? $this->format_chat_job( $job ) : null ) );
+	}
+
+	/**
+	 * AJAX: Explicit foreground transport takeover of the same prepared job.
+	 */
+	public function ajax_chat_job_run_foreground() {
+		$this->verify_chat_job_browser_request();
+		$job    = $this->get_owned_job_from_request();
+		$runner = new Abilities_Bridge_Chat_Job_Runner();
+		$result = $runner->run_existing( $job->id, $job->runner_token );
+		$job    = Abilities_Bridge_Chat_Jobs::get( $job->id );
+		if ( is_wp_error( $result ) && ( ! $job || 'queued' === $job->status ) ) {
+			wp_send_json_error(
+				array(
+					'message' => $result->get_error_message(),
+					'job'     => $this->format_chat_job( $job ),
+				)
+			);
+		}
+
+		wp_send_json_success( $this->format_chat_job( $job ) );
+	}
+
+	/**
+	 * Verify the common browser-facing chat-job security boundary.
+	 */
+	private function verify_chat_job_browser_request() {
+		check_ajax_referer( 'abilities_bridge_nonce', 'nonce' );
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Insufficient permissions.', 'abilities-bridge' ) ), 403 );
+		}
+		if ( ! Abilities_Bridge_Welcome_Wizard::is_setup_complete() ) {
+			wp_send_json_error( array( 'message' => __( 'Please complete the welcome wizard before using chat.', 'abilities-bridge' ) ), 403 );
+		}
+	}
+
+	/**
+	 * Resolve a public token and enforce user ownership.
+	 *
+	 * @return object Job row.
+	 */
+	private function get_owned_job_from_request() {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- every caller runs the shared verifier first.
+		$token = isset( $_POST['job'] ) ? sanitize_text_field( wp_unslash( $_POST['job'] ) ) : '';
+		$job   = Abilities_Bridge_Chat_Jobs::get_by_token( $token );
+		if ( ! $job || get_current_user_id() !== (int) $job->user_id || ! $this->get_accessible_conversation( $job->conversation_id ) ) {
+			wp_send_json_error( array( 'message' => __( 'Chat job not found.', 'abilities-bridge' ) ), 404 );
+		}
+
+		return $job;
+	}
+
+	/**
+	 * Format safe progress data for browser polling.
+	 *
+	 * @param object $job Job row.
+	 * @return array
+	 */
+	private function format_chat_job( $job ) {
+		if ( ! $job ) {
+			return array( 'status' => 'missing' );
+		}
+
+		return array(
+			'job'                    => $job->public_token,
+			'conversation_id'        => (int) $job->conversation_id,
+			'status'                 => $job->status,
+			'phase'                  => $job->phase,
+			'rounds_completed'       => (int) $job->rounds_completed,
+			'last_activity'          => sanitize_text_field( $job->last_activity ),
+			'elapsed'                => Abilities_Bridge_Chat_Jobs::age( $job ),
+			'error_code'             => sanitize_key( $job->error_code ),
+			'error_message'          => sanitize_text_field( $job->error_message ),
+			'background_unavailable' => 'queued' === $job->status && Abilities_Bridge_Chat_Jobs::age( $job ) >= 45,
+			'cancel_requested'       => (bool) $job->cancel_requested,
+		);
+	}
+
+	/**
+	 * Billing-safe GET recovery for a stored OpenAI response.
+	 *
+	 * This method may persist model output and queue tool work, but it never
+	 * executes an ability; only the worker may do that.
+	 *
+	 * @param object $job Uncertain OpenAI job.
+	 * @return void
+	 */
+	private function maybe_recover_openai_job( $job ) {
+		if ( ! Abilities_Bridge_Chat_Jobs::begin_recovery( $job->id ) ) {
+			return;
+		}
+
+		$client  = Abilities_Bridge_AI_Provider::create_client( Abilities_Bridge_AI_Provider::PROVIDER_OPENAI );
+		$request = $client->fetch_background_response( $job->provider_response_id );
+		if ( is_wp_error( $request ) ) {
+			$data      = (array) $request->get_error_data();
+			$exhausted = isset( $data['status'] ) && in_array( (int) $data['status'], array( 400, 401, 403, 404 ), true );
+			Abilities_Bridge_Chat_Jobs::finish_recovery_attempt( $job->id, $exhausted );
+			return;
+		}
+
+		$status = $request['data']['status'] ?? '';
+		if ( in_array( $status, array( 'queued', 'in_progress' ), true ) ) {
+			Abilities_Bridge_Chat_Jobs::finish_recovery_attempt( $job->id, false );
+			return;
+		}
+		if ( in_array( $status, array( 'failed', 'cancelled', 'incomplete' ), true ) ) {
+			Abilities_Bridge_Chat_Jobs::finish_recovery_attempt( $job->id, true );
+			return;
+		}
+
+		$parsed = $client->parse_response_data( $request['data'], $request['response_body'], $request['response_code'] );
+		if ( is_wp_error( $parsed ) ) {
+			Abilities_Bridge_Chat_Jobs::finish_recovery_attempt( $job->id, true );
+			return;
+		}
+
+		$tool_uses = array();
+		foreach ( $parsed['content'] as $block ) {
+			if ( isset( $block['type'] ) && 'tool_use' === $block['type'] ) {
+				$tool_uses[] = $block;
+			}
+		}
+		if ( ! empty( $tool_uses ) ) {
+			$seeded = Abilities_Bridge_Chat_Job_Steps::seed( $job->id, (int) $job->rounds_completed + 1, $tool_uses );
+			if ( is_wp_error( $seeded ) ) {
+				Abilities_Bridge_Chat_Jobs::finish_recovery_attempt( $job->id, true );
+				return;
+			}
+		}
+
+		$current = Abilities_Bridge_Chat_Jobs::get( $job->id );
+		if ( ! $current || 'recovering' !== $current->recovery_status || (int) $current->cancel_requested ) {
+			Abilities_Bridge_Chat_Jobs::finish_recovery_attempt( $job->id, true );
+			return;
+		}
+
+		$conversation = new Abilities_Bridge_Conversation( $job->conversation_id );
+		$message_id   = $conversation->add_assistant_message( $parsed['content'], $job->id, (int) $job->rounds_completed + 1 );
+		if ( is_wp_error( $message_id ) ) {
+			Abilities_Bridge_Chat_Jobs::finish_recovery_attempt( $job->id, false );
+			return;
+		}
+
+		if ( ! Abilities_Bridge_Chat_Jobs::finish_recovered_response( $job->id, ! empty( $tool_uses ) ) ) {
+			Abilities_Bridge_Chat_Jobs::reconcile_terminal_context( $job->id );
+			Abilities_Bridge_Chat_Jobs::finish_recovery_attempt( $job->id, true );
+			return;
+		}
+		Abilities_Bridge_Database::show_job_messages_in_context( $job->id );
+
+		if ( ! empty( $parsed['response_id'] ) ) {
+			Abilities_Bridge_Database::update_last_openai_response_id( $job->conversation_id, $parsed['response_id'] );
+		}
+		if ( ! empty( $tool_uses ) ) {
+			Abilities_Bridge_Chat_Job_Runner::dispatch( $job->id, true );
+		}
 	}
 
 	/**
@@ -473,6 +821,11 @@ class Abilities_Bridge_Admin_Page {
 					);
 				}
 			} elseif ( 'assistant' === $msg->role ) {
+				// Superseded/cancelled turns remain auditable in storage, but their
+				// partial model output must not appear as part of the newer exchange.
+				if ( isset( $msg->context_visible ) && ! (int) $msg->context_visible ) {
+					continue;
+				}
 				if ( is_array( $content ) ) {
 					// Extract text from content blocks.
 					$text_parts = array();
@@ -775,13 +1128,13 @@ class Abilities_Bridge_Admin_Page {
 			$model            = Abilities_Bridge_AI_Provider::get_selected_model( $provider );
 			wp_send_json_success(
 				array(
-					'message'         => 'Provider updated successfully',
-					'provider'        => $provider,
-					'provider_label'  => Abilities_Bridge_AI_Provider::get_provider_label( $provider ),
-					'model'           => $model,
-					'model_name'      => isset( $available_models[ $model ] ) ? $available_models[ $model ] : $model,
-					'model_guidance'  => Abilities_Bridge_AI_Provider::get_model_guidance( $model, $provider ),
-					'available_models'=> $available_models,
+					'message'          => 'Provider updated successfully',
+					'provider'         => $provider,
+					'provider_label'   => Abilities_Bridge_AI_Provider::get_provider_label( $provider ),
+					'model'            => $model,
+					'model_name'       => isset( $available_models[ $model ] ) ? $available_models[ $model ] : $model,
+					'model_guidance'   => Abilities_Bridge_AI_Provider::get_model_guidance( $model, $provider ),
+					'available_models' => $available_models,
 				)
 			);
 		} else {

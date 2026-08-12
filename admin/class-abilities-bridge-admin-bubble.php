@@ -125,9 +125,9 @@ class Abilities_Bridge_Admin_Bubble {
 	 * @return void
 	 */
 	private function enqueue_shared_assets() {
-		$css_version = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/css/admin-bubble.css' );
+		$css_version         = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/css/admin-bubble.css' );
 		$attachments_version = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/js/chat-attachments.js' );
-		$js_version  = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/js/admin-bubble.js' );
+		$js_version          = filemtime( ABILITIES_BRIDGE_PLUGIN_DIR . 'admin/js/admin-bubble.js' );
 
 		wp_enqueue_style(
 			'abilities-bridge-bubble',
@@ -156,24 +156,24 @@ class Abilities_Bridge_Admin_Bubble {
 			'abilities-bridge-bubble',
 			'abilitiesBridgeBubbleData',
 			array(
-				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-				'nonce'   => wp_create_nonce( 'abilities_bridge_nonce' ),
+				'ajaxUrl'     => admin_url( 'admin-ajax.php' ),
+				'nonce'       => wp_create_nonce( 'abilities_bridge_nonce' ),
 				'attachments' => Abilities_Bridge_Attachments::get_config(),
-				'i18n'    => array(
-					'welcome'            => __( 'Hi, I\'m your AI assistant. How can I help you today?', 'abilities-bridge' ),
-					'sending'            => __( 'Processing...', 'abilities-bridge' ),
-					'send'               => __( 'Send', 'abilities-bridge' ),
-					'loadFailed'         => __( 'Unable to load that conversation right now.', 'abilities-bridge' ),
-					'connectionError'    => __( 'Unable to connect to the AI service. Please try again.', 'abilities-bridge' ),
-					'emptyConversations' => __( 'No saved conversations yet', 'abilities-bridge' ),
-					'selectConversation' => __( 'Select a conversation...', 'abilities-bridge' ),
-					'noConversation'     => __( 'No conversation selected', 'abilities-bridge' ),
-					'tokensUsed'         => __( 'tokens used', 'abilities-bridge' ),
-					'ready'              => __( 'Ready', 'abilities-bridge' ),
-					'conversationLoaded' => __( 'Conversation loaded.', 'abilities-bridge' ),
-					'attention'          => __( 'Something needs attention.', 'abilities-bridge' ),
+				'i18n'        => array(
+					'welcome'                 => __( 'Hi, I\'m your AI assistant. How can I help you today?', 'abilities-bridge' ),
+					'sending'                 => __( 'Processing...', 'abilities-bridge' ),
+					'send'                    => __( 'Send', 'abilities-bridge' ),
+					'loadFailed'              => __( 'Unable to load that conversation right now.', 'abilities-bridge' ),
+					'connectionError'         => __( 'Unable to connect to the AI service. Please try again.', 'abilities-bridge' ),
+					'emptyConversations'      => __( 'No saved conversations yet', 'abilities-bridge' ),
+					'selectConversation'      => __( 'Select a conversation...', 'abilities-bridge' ),
+					'noConversation'          => __( 'No conversation selected', 'abilities-bridge' ),
+					'tokensUsed'              => __( 'tokens used', 'abilities-bridge' ),
+					'ready'                   => __( 'Ready', 'abilities-bridge' ),
+					'conversationLoaded'      => __( 'Conversation loaded.', 'abilities-bridge' ),
+					'attention'               => __( 'Something needs attention.', 'abilities-bridge' ),
 					'loadConversationsFailed' => __( 'Unable to load saved conversations.', 'abilities-bridge' ),
-					'loadTokenFailed'    => __( 'Unable to load token usage.', 'abilities-bridge' ),
+					'loadTokenFailed'         => __( 'Unable to load token usage.', 'abilities-bridge' ),
 				),
 			)
 		);
@@ -238,6 +238,7 @@ class Abilities_Bridge_Admin_Bubble {
 					<?php endif; ?>
 					<div class="abilities-bridge-bubble-form-actions">
 						<span class="abilities-bridge-bubble-hint"><?php esc_html_e( 'Enter to send, Shift + Enter for a new line', 'abilities-bridge' ); ?></span>
+						<button type="button" id="abilities-bridge-bubble-stop" class="abilities-bridge-bubble-secondary" hidden><?php esc_html_e( 'Stop', 'abilities-bridge' ); ?></button>
 						<button type="submit" id="abilities-bridge-bubble-send" class="abilities-bridge-bubble-primary"><?php esc_html_e( 'Send', 'abilities-bridge' ); ?></button>
 					</div>
 				</form>

@@ -9,6 +9,16 @@
 	const state = {
 		currentConversationId: null,
 		currentRequest: null,
+		currentJobToken: null,
+		jobPollTimer: null,
+		jobStartedAt: 0,
+		supersedeJobToken: null,
+		enqueueInFlight: false,
+		stopRequestedDuringEnqueue: false,
+		pendingReplacementPayload: null,
+		consecutiveJobPollFailures: 0,
+		jobPollRequestId: 0,
+		foregroundRunInFlight: false,
 		isOpen: false,
 		attachmentManager: null
 	};
@@ -25,6 +35,7 @@
 		form: '#abilities-bridge-bubble-form',
 		input: '#abilities-bridge-bubble-input',
 		send: '#abilities-bridge-bubble-send',
+		stop: '#abilities-bridge-bubble-stop',
 		attachmentRoot: '#abilities-bridge-bubble-attachment-panel',
 		fileInput: '#abilities-bridge-bubble-image-input',
 		uploadImage: '#abilities-bridge-bubble-upload-image',
@@ -87,6 +98,7 @@
 		});
 
 		$(selectors.form).on('submit', handleSubmit);
+		$(selectors.stop).on('click', stopCurrentJob);
 		$(selectors.newConversation).on('click', function() {
 			handleNewConversation();
 		});
@@ -151,25 +163,59 @@
 		if (!message && attachments.length === 0) {
 			return;
 		}
+		const payload = { message: message, attachments: attachments };
+		if (state.enqueueInFlight && state.stopRequestedDuringEnqueue && state.pendingReplacementPayload) {
+			appendMessage('error', 'A replacement request is already waiting. The newer text was not queued.');
+			return;
+		}
 
 		appendMessage('user', buildLocalDisplayContent(message, attachments));
 		$(selectors.input).val('');
+		if (state.attachmentManager) {
+			state.attachmentManager.clear();
+		}
+
+		if (state.enqueueInFlight && state.stopRequestedDuringEnqueue) {
+			state.pendingReplacementPayload = payload;
+			setLoading(true);
+			$(selectors.stop).prop('hidden', true).hide();
+			setStatus('Saving the replacement request…');
+			return;
+		}
+
+		enqueueChatPayload(payload);
+	}
+
+	function enqueueChatPayload(payload) {
 		setLoading(true);
 		setStatus(abilitiesBridgeBubbleData.i18n.sending || 'Processing...');
+		state.enqueueInFlight = true;
+		state.stopRequestedDuringEnqueue = false;
+		let replacementAfterStop = null;
 
-		state.currentRequest = $.ajax({
+		const request = $.ajax({
 			url: abilitiesBridgeBubbleData.ajaxUrl,
 			type: 'POST',
 			data: {
-				action: 'abilities_bridge_send_message',
+				action: 'abilities_bridge_chat_job_enqueue',
 				nonce: abilitiesBridgeBubbleData.nonce,
-				message: message,
-				attachments: JSON.stringify(attachments),
-				conversation_id: state.currentConversationId
+				message: payload.message,
+				attachments: JSON.stringify(payload.attachments),
+				conversation_id: state.currentConversationId,
+				supersede_job: state.supersedeJobToken || ''
 			}
-		}).done(function(response) {
+		});
+		state.currentRequest = request;
+
+		request.done(function(response) {
 			if (!response.success) {
+				if (state.stopRequestedDuringEnqueue) {
+					replacementAfterStop = state.pendingReplacementPayload;
+					state.pendingReplacementPayload = null;
+					state.stopRequestedDuringEnqueue = false;
+				}
 				handleError(extractErrorMessage(response));
+				finishJobUi();
 				return;
 			}
 
@@ -178,19 +224,233 @@
 				loadConversations();
 			}
 
-			appendMessage('assistant', response.data.response || '');
-			if (state.attachmentManager) {
-				state.attachmentManager.clear();
+			if (state.stopRequestedDuringEnqueue) {
+				state.supersedeJobToken = response.data.job;
+				cancelJobWithRetry(response.data.job);
+				state.stopRequestedDuringEnqueue = false;
+				replacementAfterStop = state.pendingReplacementPayload;
+				state.pendingReplacementPayload = null;
+				finishJobUi();
+				return;
 			}
-			updateTokenMeter();
-			setStatus(abilitiesBridgeBubbleData.i18n.ready || 'Ready');
+
+			state.currentJobToken = response.data.job;
+			state.supersedeJobToken = null;
+			startJobPolling(response.data.job, 0);
 		}).fail(function() {
+			if (state.stopRequestedDuringEnqueue) {
+				replacementAfterStop = state.pendingReplacementPayload;
+				state.pendingReplacementPayload = null;
+				state.stopRequestedDuringEnqueue = false;
+			}
 			handleError(abilitiesBridgeBubbleData.i18n.connectionError);
+			finishJobUi();
 		}).always(function() {
-			setLoading(false);
-			state.currentRequest = null;
-			$(selectors.input).trigger('focus');
+			if (state.currentRequest === request) {
+				state.currentRequest = null;
+			}
+			state.enqueueInFlight = false;
+			if (replacementAfterStop) {
+				enqueueChatPayload(replacementAfterStop);
+			}
 		});
+	}
+
+	function startJobPolling(jobToken, elapsed) {
+		state.currentJobToken = jobToken;
+		state.jobStartedAt = Date.now() - ((elapsed || 0) * 1000);
+		state.consecutiveJobPollFailures = 0;
+		pollJob();
+	}
+
+	function pollJob() {
+		if (!state.currentJobToken) return;
+		const token = state.currentJobToken;
+		clearTimeout(state.jobPollTimer);
+		state.jobPollTimer = null;
+		const requestId = ++state.jobPollRequestId;
+
+		$.post(abilitiesBridgeBubbleData.ajaxUrl, {
+			action: 'abilities_bridge_chat_job_status',
+			nonce: abilitiesBridgeBubbleData.nonce,
+			job: token
+		}).done(function(response) {
+			if (token !== state.currentJobToken || requestId !== state.jobPollRequestId) return;
+			if (!response.success) {
+				state.currentJobToken = null;
+				handleError(extractErrorMessage(response));
+				finishJobUi();
+				return;
+			}
+			state.consecutiveJobPollFailures = 0;
+			const job = response.data;
+			const elapsed = Math.max(job.elapsed || 0, Math.floor((Date.now() - state.jobStartedAt) / 1000));
+			setStatus((job.last_activity || (job.status === 'preparing' ? 'Saving request' : 'Working')) + ' · ' + formatElapsed(elapsed));
+
+			if (job.status === 'missing') {
+				state.currentJobToken = null;
+				appendMessage('error', 'This saved background job is no longer available. Reload the conversation to check for its final answer.');
+				finishJobUi();
+				return;
+			}
+
+			if (job.status === 'completed') {
+				state.currentJobToken = null;
+				loadConversation(job.conversation_id, false);
+				finishJobUi();
+				return;
+			}
+			if (job.status === 'failed' || job.status === 'uncertain') {
+				state.currentJobToken = null;
+				appendMessage(job.status === 'uncertain' ? 'system' : 'error', job.error_message || (job.status === 'uncertain' ? 'The last step has an uncertain outcome and may have been billed. Check before trying again.' : 'The background chat job failed.'));
+				finishJobUi();
+				return;
+			}
+			if (job.status === 'cancelled') {
+				state.currentJobToken = null;
+				finishJobUi();
+				return;
+			}
+
+			if (job.background_unavailable) {
+				renderForegroundOffer(token);
+			}
+
+			state.jobPollTimer = setTimeout(pollJob, elapsed >= 60 ? 5000 : 2000);
+		}).fail(function() {
+			if (token === state.currentJobToken && requestId === state.jobPollRequestId) {
+				state.consecutiveJobPollFailures++;
+				if (state.consecutiveJobPollFailures >= 12) {
+					state.currentJobToken = null;
+					appendMessage('error', 'Status checks repeatedly failed. The saved job may still be running; reopen this conversation to resume monitoring.');
+					finishJobUi();
+					return;
+				}
+				state.jobPollTimer = setTimeout(pollJob, 5000);
+			}
+		});
+	}
+
+	function stopCurrentJob() {
+		if (!state.currentJobToken && state.enqueueInFlight) {
+			state.stopRequestedDuringEnqueue = true;
+			finishJobUi();
+			appendMessage('system', 'Stopping as soon as this request is safely saved. You can enter a replacement question now.');
+			return;
+		}
+		if (!state.currentJobToken) return;
+		const token = state.currentJobToken;
+		state.supersedeJobToken = token;
+		state.currentJobToken = null;
+		clearTimeout(state.jobPollTimer);
+		finishJobUi();
+		appendMessage('system', 'Stopped. A step that was already running may still finish (and be billed) at the provider; its result was discarded.');
+		cancelJobWithRetry(token);
+	}
+
+	function cancelJobWithRetry(jobToken, attempt) {
+		const retryAttempt = attempt || 0;
+		$.post(abilitiesBridgeBubbleData.ajaxUrl, {
+			action: 'abilities_bridge_chat_job_cancel',
+			nonce: abilitiesBridgeBubbleData.nonce,
+			job: jobToken
+		}).done(function(response) {
+			if (!response.success && retryAttempt < 4) {
+				setTimeout(function() { cancelJobWithRetry(jobToken, retryAttempt + 1); }, Math.pow(2, retryAttempt) * 1000);
+			} else if (!response.success) {
+				appendMessage('error', 'The Stop request could not be confirmed. It will be attempted again with a replacement question.');
+			}
+		}).fail(function() {
+			if (retryAttempt < 4) {
+				setTimeout(function() { cancelJobWithRetry(jobToken, retryAttempt + 1); }, Math.pow(2, retryAttempt) * 1000);
+			} else {
+				appendMessage('error', 'The Stop request could not be confirmed. It will be attempted again with a replacement question.');
+			}
+		});
+	}
+
+	function runJobInForeground(token) {
+		if (state.foregroundRunInFlight) return;
+		state.foregroundRunInFlight = true;
+		clearTimeout(state.jobPollTimer);
+		state.jobPollTimer = null;
+		++state.jobPollRequestId;
+		$('#abilities-bridge-bubble-run-foreground').prop('disabled', true).text('Starting foreground run…');
+		state.currentRequest = $.post(abilitiesBridgeBubbleData.ajaxUrl, {
+			action: 'abilities_bridge_chat_job_run_foreground',
+			nonce: abilitiesBridgeBubbleData.nonce,
+			job: token
+		}).done(function(response) {
+			if (!response.success) {
+				handleError(extractErrorMessage(response));
+			}
+		}).fail(function() {
+			handleError('The foreground takeover request failed. Background monitoring will continue.');
+		}).always(function() {
+			state.currentRequest = null;
+			state.foregroundRunInFlight = false;
+			$('#abilities-bridge-bubble-run-foreground').remove();
+			clearTimeout(state.jobPollTimer);
+			state.jobPollTimer = null;
+			if (token === state.currentJobToken) pollJob();
+		});
+	}
+
+	function renderForegroundOffer(token) {
+		if (state.foregroundRunInFlight) return;
+		if ($('#abilities-bridge-bubble-run-foreground').length) return;
+		$('<button>', {
+			id: 'abilities-bridge-bubble-run-foreground',
+			type: 'button',
+			class: 'button button-small',
+			text: 'Run saved request in foreground'
+		}).on('click', function() {
+			runJobInForeground(token);
+		}).appendTo(selectors.status);
+	}
+
+	function resumeJob(conversationId) {
+		if (!conversationId || state.currentJobToken) return;
+		$.post(abilitiesBridgeBubbleData.ajaxUrl, {
+			action: 'abilities_bridge_chat_job_resume',
+			nonce: abilitiesBridgeBubbleData.nonce,
+			conversation_id: conversationId
+		}).done(function(response) {
+			if (!response.success || !response.data.job) return;
+			const job = response.data.job;
+			if (['preparing', 'queued', 'dispatching', 'running'].indexOf(job.status) !== -1) {
+				setLoading(true);
+				startJobPolling(job.job, job.elapsed);
+			} else if (job.status === 'uncertain') {
+				appendMessage('system', job.error_message || 'The prior request has an uncertain outcome and may have been billed.');
+			}
+		});
+	}
+
+	function resumeLatestJob() {
+		if (state.currentConversationId || state.currentJobToken) return;
+		$.post(abilitiesBridgeBubbleData.ajaxUrl, {
+			action: 'abilities_bridge_chat_job_resume',
+			nonce: abilitiesBridgeBubbleData.nonce,
+			conversation_id: 0
+		}).done(function(response) {
+			if (!response.success || !response.data.job) return;
+			const job = response.data.job;
+			if (['preparing', 'queued', 'dispatching', 'running', 'uncertain'].indexOf(job.status) !== -1) {
+				loadConversation(job.conversation_id, false);
+			}
+		});
+	}
+
+	function finishJobUi() {
+		setLoading(false);
+		updateTokenMeter();
+		setStatus(abilitiesBridgeBubbleData.i18n.ready || 'Ready');
+		$(selectors.input).trigger('focus');
+	}
+
+	function formatElapsed(seconds) {
+		return Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
 	}
 
 	function buildLocalDisplayContent(message, attachments) {
@@ -266,6 +526,8 @@
 			}
 		} else if (state.currentConversationId) {
 			$select.val(String(state.currentConversationId));
+		} else {
+			resumeLatestJob();
 		}
 	}
 
@@ -289,6 +551,7 @@
 			setConversationId(conversationId);
 			renderMessages(response.data.messages || []);
 			updateTokenMeter();
+			resumeJob(conversationId);
 			if (shouldAnnounce) {
 				setStatus(abilitiesBridgeBubbleData.i18n.conversationLoaded || 'Conversation loaded.');
 			}
@@ -334,12 +597,16 @@
 
 	function setLoading(loading) {
 		$(selectors.input).prop('disabled', loading);
+		$(selectors.newConversation).prop('disabled', loading);
+		$(selectors.conversationSelect).prop('disabled', loading);
 		if (state.attachmentManager) {
 			state.attachmentManager.setDisabled(loading);
 		}
 		$(selectors.send)
 			.prop('disabled', loading)
 			.text(loading ? abilitiesBridgeBubbleData.i18n.sending : abilitiesBridgeBubbleData.i18n.send);
+		$(selectors.send).prop('hidden', loading);
+		$(selectors.stop).prop('hidden', !loading);
 	}
 
 	function updateTokenMeter() {
