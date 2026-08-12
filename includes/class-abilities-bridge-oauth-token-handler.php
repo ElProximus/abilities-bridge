@@ -67,11 +67,11 @@ class Abilities_Bridge_OAuth_Token_Handler {
 			$result = self::handle_authorization_code( $code, $client_id, $redirect_uri, $code_verifier );
 
 			if ( is_wp_error( $result ) ) {
-				$rate_limiter->record_failed_attempt( $client_id );
+				$rate_limiter->record_failed_attempt( $rate_limiter->client_scoped_identifier( $client_id ) );
 				return self::jsonrpc_error_response( $result );
 			}
 
-			$rate_limiter->reset_failed_attempts( $client_id );
+			$rate_limiter->reset_failed_attempts( $rate_limiter->client_scoped_identifier( $client_id ) );
 			return $result;
 		}
 
@@ -79,10 +79,10 @@ class Abilities_Bridge_OAuth_Token_Handler {
 		if ( 'client_credentials' === $grant_type ) {
 			$result = self::handle_client_credentials( $client_id, $client_secret );
 			if ( is_wp_error( $result ) ) {
-				$rate_limiter->record_failed_attempt( $client_id );
+				$rate_limiter->record_failed_attempt( $rate_limiter->client_scoped_identifier( $client_id ) );
 				return self::jsonrpc_error_response( $result );
 			}
-			$rate_limiter->reset_failed_attempts( $client_id );
+			$rate_limiter->reset_failed_attempts( $rate_limiter->client_scoped_identifier( $client_id ) );
 			return $result;
 		}
 

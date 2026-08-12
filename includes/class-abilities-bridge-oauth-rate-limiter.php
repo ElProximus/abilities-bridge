@@ -278,31 +278,65 @@ class Abilities_Bridge_OAuth_Rate_Limiter {
 	/**
 	 * Get client IP address
 	 *
+	 * REMOTE_ADDR - the address of the actual TCP connection - is the only
+	 * value a direct client cannot forge. Forwarded headers (X-Forwarded-For,
+	 * CF-Connecting-IP, ...) are plain request headers: trusting whichever is
+	 * present let an attacker rotate a made-up address per request and evade
+	 * every per-IP limit.
+	 *
+	 * Sites genuinely behind a proxy (where REMOTE_ADDR is the proxy for
+	 * everyone) can opt in to ONE specific header via the filter below - use
+	 * the header your proxy OVERWRITES (e.g. HTTP_CF_CONNECTING_IP for
+	 * Cloudflare), not X-Forwarded-For, which most proxies merely APPEND the
+	 * real address to (the first entry stays client-controlled). Trusting a
+	 * header is only safe when non-proxy traffic cannot reach the site at
+	 * all; that firewall is the site owner's responsibility.
+	 *
 	 * @return string IP address
 	 */
 	private function get_client_ip() {
-		// Check for proxy headers.
-		$headers = array(
-			'HTTP_CF_CONNECTING_IP', // Cloudflare.
-			'HTTP_X_FORWARDED_FOR',  // Standard proxy header.
-			'HTTP_X_REAL_IP',        // Nginx.
-			'REMOTE_ADDR',           // Fallback.
-		);
+		/**
+		 * Filter the $_SERVER key of a trusted proxy header to read the
+		 * client IP from, e.g. 'HTTP_CF_CONNECTING_IP'. Default '' = trust
+		 * only REMOTE_ADDR.
+		 *
+		 * @param string $header $_SERVER key, or empty string for none.
+		 */
+		$trusted_header = (string) apply_filters( 'abilities_bridge_trusted_proxy_header', '' );
 
-		foreach ( $headers as $header ) {
-			if ( ! empty( $_SERVER[ $header ] ) ) {
-				// Take first IP if comma-separated list.
-				$ip = explode( ',', sanitize_text_field( wp_unslash( $_SERVER[ $header ] ) ) )[0];
-				$ip = trim( $ip );
+		if ( '' !== $trusted_header && ! empty( $_SERVER[ $trusted_header ] ) ) {
+			$ip = trim( explode( ',', sanitize_text_field( wp_unslash( $_SERVER[ $trusted_header ] ) ) )[0] );
 
-				// Validate IP.
-				if ( filter_var( $ip, FILTER_VALIDATE_IP ) ) {
-					return $ip;
-				}
+			if ( filter_var( $ip, FILTER_VALIDATE_IP ) ) {
+				return $ip;
+			}
+		}
+
+		if ( ! empty( $_SERVER['REMOTE_ADDR'] ) ) {
+			$ip = trim( sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) );
+
+			if ( filter_var( $ip, FILTER_VALIDATE_IP ) ) {
+				return $ip;
 			}
 		}
 
 		return '0.0.0.0';
+	}
+
+	/**
+	 * Build a lockout identifier scoped to both a client and the caller's IP.
+	 *
+	 * Lockouts keyed by client_id alone let anyone who knows a public client
+	 * ID deliberately fail five times and lock the legitimate client (e.g.
+	 * claude.ai's token refreshes) out for 15 minutes. Scoping by client+IP
+	 * keeps brute-force protection per-attacker: the attacker's failures
+	 * lock out only the attacker's address.
+	 *
+	 * @param string $client_id OAuth client ID.
+	 * @return string Composite identifier.
+	 */
+	public function client_scoped_identifier( $client_id ) {
+		return (string) $client_id . '|' . $this->get_client_ip();
 	}
 
 	/**
