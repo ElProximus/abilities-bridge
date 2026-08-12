@@ -41,14 +41,18 @@ class Abilities_Bridge_Pending_Store {
 	 * @return void
 	 */
 	public static function set( $key, $value, $expiration ) {
-		$entries = self::get_entries();
+		self::locked(
+			function () use ( $key, $value, $expiration ) {
+				$entries = self::get_entries();
 
-		$entries[ $key ] = array(
-			'value'   => $value,
-			'expires' => time() + (int) $expiration,
+				$entries[ $key ] = array(
+					'value'   => $value,
+					'expires' => time() + (int) $expiration,
+				);
+
+				update_option( self::OPTION_NAME, $entries, false );
+			}
 		);
-
-		update_option( self::OPTION_NAME, $entries, false );
 	}
 
 	/**
@@ -61,20 +65,24 @@ class Abilities_Bridge_Pending_Store {
 	 * @return mixed Stored value, or false if missing or expired.
 	 */
 	public static function take( $key ) {
-		$entries = self::get_entries();
-		$value   = false;
+		return self::locked(
+			function () use ( $key ) {
+				$entries = self::get_entries();
+				$value   = false;
 
-		if ( isset( $entries[ $key ] ) ) {
-			if ( time() <= (int) ( $entries[ $key ]['expires'] ?? 0 ) ) {
-				$value = $entries[ $key ]['value'];
+				if ( isset( $entries[ $key ] ) ) {
+					if ( time() <= (int) ( $entries[ $key ]['expires'] ?? 0 ) ) {
+						$value = $entries[ $key ]['value'];
+					}
+					unset( $entries[ $key ] );
+				}
+
+				$entries = self::prune_expired( $entries );
+				update_option( self::OPTION_NAME, $entries, false );
+
+				return $value;
 			}
-			unset( $entries[ $key ] );
-		}
-
-		$entries = self::prune_expired( $entries );
-		update_option( self::OPTION_NAME, $entries, false );
-
-		return $value;
+		);
 	}
 
 	/**
@@ -83,8 +91,44 @@ class Abilities_Bridge_Pending_Store {
 	 * @return void
 	 */
 	public static function cleanup_expired() {
-		$entries = self::prune_expired( self::get_entries() );
-		update_option( self::OPTION_NAME, $entries, false );
+		self::locked(
+			function () {
+				$entries = self::prune_expired( self::get_entries() );
+				update_option( self::OPTION_NAME, $entries, false );
+			}
+		);
+	}
+
+	/**
+	 * Run a read-modify-write cycle under a MySQL advisory lock.
+	 *
+	 * The set(), take(), and cleanup-cron paths all read the whole option, mutate
+	 * the array in memory, and write it back. Two concurrent OAuth flows
+	 * doing that dance each write only their own view - the second write
+	 * silently erases the first flow's entry, which then dies with
+	 * "Authorization request has expired or is invalid" (the exact symptom
+	 * the DB-backed store was built to eliminate, reachable as a race
+	 * instead of a cache bug). One named lock per site serializes the
+	 * cycle; entry keys stay per-request random as before. On lock timeout
+	 * the operation still runs (today's unserialized behavior) rather than
+	 * failing the sign-in outright.
+	 *
+	 * @param callable $operation Operation to run while holding the lock.
+	 * @return mixed The operation's return value.
+	 */
+	private static function locked( $operation ) {
+		global $wpdb;
+
+		$lock_name = 'ab_oauth_pending_' . $wpdb->prefix;
+		$acquired  = 1 === (int) $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, 3)', $lock_name ) );
+
+		try {
+			return $operation();
+		} finally {
+			if ( $acquired ) {
+				$wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock_name ) );
+			}
+		}
 	}
 
 	/**
