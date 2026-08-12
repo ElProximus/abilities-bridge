@@ -62,6 +62,16 @@ if ( ! class_exists( 'Abilities_Bridge_Test_WPDB' ) ) {
 		}
 
 		/**
+		 * Return no durable jobs for this attachment-focused deletion test.
+		 *
+		 * @param string $query Query.
+		 * @return array
+		 */
+		public function get_col( $query ) {
+			return array();
+		}
+
+		/**
 		 * Capture an update.
 		 *
 		 * @param string $table Table.
@@ -200,6 +210,32 @@ final class AttachmentsTest extends TestCase {
 		$this->assertSame( 'image/png', $attachments[0]['mime_type'] );
 		$this->assertSame( 1, $attachments[0]['width'] );
 		$this->assertSame( 1, $attachments[0]['height'] );
+	}
+
+	/**
+	 * Request slashes are removed once without corrupting filename JSON escapes.
+	 *
+	 * @return void
+	 */
+	public function test_parse_incoming_attachments_accepts_quoted_backslash_filename(): void {
+		$filename = 'quote" and slash\\name.png';
+		$posted   = wp_slash(
+			wp_json_encode(
+				array(
+					array(
+						'data_url' => $this->png_data_url(),
+						'source'   => 'upload',
+						'name'     => $filename,
+					),
+				)
+			)
+		);
+
+		$attachments = Abilities_Bridge_Attachments::parse_incoming_attachments( wp_unslash( $posted ) );
+
+		$this->assertIsArray( $attachments );
+		$this->assertCount( 1, $attachments );
+		$this->assertSame( 'quoteandslashname.png', $attachments[0]['name'] );
 	}
 
 	/**
@@ -379,7 +415,7 @@ final class AttachmentsTest extends TestCase {
 
 			$this->assertTrue( Abilities_Bridge_Database::permanently_delete_conversation( 321, 12 ) );
 			$this->assertDirectoryDoesNotExist( $dir );
-			$this->assertCount( 3, $GLOBALS['wpdb']->deleted );
+			$this->assertCount( 4, $GLOBALS['wpdb']->deleted );
 		} finally {
 			if ( null === $previous_wpdb ) {
 				unset( $GLOBALS['wpdb'] );
@@ -517,11 +553,6 @@ final class AttachmentsTest extends TestCase {
 	 */
 	private function stub_wp_functions(): void {
 		Functions\when( '__' )->alias(
-			function ( $value ) {
-				return $value;
-			}
-		);
-		Functions\when( 'wp_unslash' )->alias(
 			function ( $value ) {
 				return $value;
 			}

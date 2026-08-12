@@ -47,6 +47,8 @@ Abilities Bridge connects AI to your WordPress site. Use the built-in admin chat
 
 This plugin communicates with Anthropic's Claude API (https://api.anthropic.com) and/or OpenAI's API (https://api.openai.com) to provide AI functionality. Data is only sent when you actively use the chat interface or MCP tools. No background data collection or telemetry occurs.
 
+Durable OpenAI chat jobs use Responses API background mode with response storage enabled so the plugin can poll and recover an answer after the browser closes. Under OpenAI's standard data controls, stored Responses application state is retained for at least 30 days. For OpenAI organizations approved for Zero Data Retention, OpenAI treats storage as disabled and temporarily stores background response data for roughly 10 minutes to support polling.
+
 = Data Sent =
 
 * Chat messages and prompts
@@ -215,7 +217,7 @@ This plugin sends data to Anthropic's API (https://api.anthropic.com) or OpenAI'
 
 = Data Retention =
 
-Conversations and logs are stored in your WordPress database until manually deleted. Refer to your provider's privacy policy for their data retention practices.
+Conversations and logs are stored in your WordPress database until manually deleted. Background chat jobs also store status, timing, provider/model, tool-checkpoint, and error metadata; terminal job metadata is automatically removed after 30 days. Durable OpenAI jobs enable Responses API storage for polling and recovery; OpenAI normally retains that application state for at least 30 days, while approved Zero Data Retention organizations use temporary background storage instead. Refer to your provider's privacy policy and account data controls for current retention practices.
 
 = No Telemetry =
 

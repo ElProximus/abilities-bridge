@@ -219,6 +219,10 @@ This plugin sends data to your selected AI provider â€” Anthropic's Claude 
 
 Data is only sent when you actively use the chat interface or MCP tools. No background data collection occurs.
 
+Long-running chat requests store local job status, timing, provider/model, tool-checkpoint, and error metadata so a request can survive a closed browser. Terminal job metadata is automatically removed after 30 days.
+
+For durable OpenAI chat jobs, the plugin uses Responses API background mode with response storage enabled so it can poll and recover an answer after the browser closes. Under OpenAI's standard data controls, stored Responses application state is retained for at least 30 days. OpenAI organizations approved for Zero Data Retention override `store: true` to false; background response data is then held temporarily for roughly 10 minutes to support polling. Provider-side retention is controlled by the OpenAI account and its current data-retention terms.
+
 Please review [Anthropic's privacy policy](https://www.anthropic.com/legal/privacy) and/or [OpenAI's privacy policy](https://openai.com/policies/privacy-policy).
 
 ## Support
@@ -267,4 +271,3 @@ Abilities Bridge now separates remote MCP setup into two provider-specific flows
 - Exposes the built-in HTTPS WordPress `/mcp` endpoint for ChatGPT developer mode
 - Keeps OAuth, tool discovery, and tool execution inside WordPress
 - Uses its own client credentials and settings tab to avoid confusion with Anthropic MCP
-

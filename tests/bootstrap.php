@@ -40,6 +40,38 @@ if ( ! defined( 'WEEK_IN_SECONDS' ) ) {
 	define( 'WEEK_IN_SECONDS', 7 * DAY_IN_SECONDS );
 }
 
+if ( ! function_exists( 'wp_slash' ) ) {
+	/**
+	 * Add WordPress-style request slashes in unit tests.
+	 *
+	 * @param mixed $value Value to slash.
+	 * @return mixed
+	 */
+	function wp_slash( $value ) {
+		if ( is_array( $value ) ) {
+			return array_map( 'wp_slash', $value );
+		}
+
+		return is_string( $value ) ? addslashes( $value ) : $value;
+	}
+}
+
+if ( ! function_exists( 'wp_unslash' ) ) {
+	/**
+	 * Remove one layer of WordPress-style request slashes in unit tests.
+	 *
+	 * @param mixed $value Value to unslash.
+	 * @return mixed
+	 */
+	function wp_unslash( $value ) {
+		if ( is_array( $value ) ) {
+			return array_map( 'wp_unslash', $value );
+		}
+
+		return is_string( $value ) ? stripslashes( $value ) : $value;
+	}
+}
+
 if ( ! class_exists( 'WP_Hook' ) ) {
 	/**
 	 * Minimal WP_Hook test double for read-only callback iteration tests.

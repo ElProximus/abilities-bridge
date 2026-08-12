@@ -14,6 +14,9 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class Abilities_Bridge {
 
+	const DB_RETRY_AFTER_OPTION = 'abilities_bridge_db_upgrade_retry_after';
+	const DB_ERROR_OPTION       = 'abilities_bridge_db_upgrade_error';
+
 	/**
 	 * Single instance of the class.
 	 *
@@ -73,17 +76,7 @@ class Abilities_Bridge {
 	 * Initialize hooks.
 	 */
 	private function init_hooks() {
-		// Only run database upgrades in admin context, not during API requests.
-		if ( is_admin() && ! wp_doing_ajax() && ! ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
-			require_once ABILITIES_BRIDGE_PLUGIN_DIR . 'includes/class-abilities-bridge-database.php';
-
-			// Check if upgrade needed (version-based).
-			$db_version = get_option( 'abilities_bridge_db_version', '0' );
-			if ( version_compare( $db_version, ABILITIES_BRIDGE_VERSION, '<' ) ) {
-				Abilities_Bridge_Database::upgrade_database();
-				update_option( 'abilities_bridge_db_version', ABILITIES_BRIDGE_VERSION );
-			}
-		}
+		$this->maybe_upgrade_database();
 
 		// Initialize MCP components.
 		$mcp_rest_api = new Abilities_Bridge_MCP_REST_API();
@@ -91,6 +84,9 @@ class Abilities_Bridge {
 
 		$mcp_oauth = new Abilities_Bridge_MCP_OAuth();
 		$mcp_oauth->init();
+
+		$chat_runner = new Abilities_Bridge_Chat_Job_Runner();
+		$chat_runner->register();
 
 		// Initialize admin pages.
 		if ( is_admin() ) {
@@ -125,6 +121,59 @@ class Abilities_Bridge {
 	}
 
 	/**
+	 * Run schema DDL only on a safe admin/CLI request with an hourly backoff.
+	 *
+	 * @return void
+	 */
+	private function maybe_upgrade_database() {
+		$db_version = get_option( 'abilities_bridge_db_version', '0' );
+		if ( ! version_compare( $db_version, ABILITIES_BRIDGE_DB_VERSION, '<' ) ) {
+			return;
+		}
+
+		if ( is_admin() ) {
+			add_action( 'admin_notices', array( $this, 'render_database_upgrade_notice' ) );
+		}
+
+		$is_cli             = defined( 'WP_CLI' ) && WP_CLI;
+		$safe_admin_request = is_admin() && ! wp_doing_ajax() && ! wp_doing_cron();
+		$retry_after        = (int) get_option( self::DB_RETRY_AFTER_OPTION, 0 );
+		if ( ( ! $safe_admin_request && ! $is_cli ) || $retry_after > time() ) {
+			return;
+		}
+
+		// Publish the next eligible attempt before DDL starts so overlapping
+		// requests and a failed ALTER cannot create a per-request migration loop.
+		update_option( self::DB_RETRY_AFTER_OPTION, time() + HOUR_IN_SECONDS, false );
+		require_once ABILITIES_BRIDGE_PLUGIN_DIR . 'includes/class-abilities-bridge-database.php';
+		if ( Abilities_Bridge_Database::create_tables() ) {
+			update_option( 'abilities_bridge_db_version', ABILITIES_BRIDGE_DB_VERSION );
+			delete_option( self::DB_RETRY_AFTER_OPTION );
+			delete_option( self::DB_ERROR_OPTION );
+			return;
+		}
+
+		update_option( self::DB_ERROR_OPTION, time(), false );
+		error_log( 'Abilities Bridge database upgrade did not complete; the next attempt is delayed for one hour.' ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+	}
+
+	/**
+	 * Surface a failed/pending schema upgrade without repeating DDL.
+	 *
+	 * @return void
+	 */
+	public function render_database_upgrade_notice() {
+		if ( ! current_user_can( 'manage_options' ) || ! version_compare( get_option( 'abilities_bridge_db_version', '0' ), ABILITIES_BRIDGE_DB_VERSION, '<' ) ) {
+			return;
+		}
+		?>
+		<div class="notice notice-error">
+			<p><?php esc_html_e( 'Abilities Bridge could not finish its database upgrade. Background chat is unavailable until the database account can create and alter the plugin tables. The plugin will retry no more than once per hour.', 'abilities-bridge' ); ?></p>
+		</div>
+		<?php
+	}
+
+	/**
 	 * Add action links to plugin list.
 	 *
 	 * @param array $links Existing links.
@@ -139,5 +188,3 @@ class Abilities_Bridge {
 		return array_merge( $plugin_links, $links );
 	}
 }
-
-

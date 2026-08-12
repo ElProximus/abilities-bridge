@@ -59,6 +59,9 @@ class Abilities_Bridge_Log_Cleanup {
 		$conversations_deleted            = Abilities_Bridge_Database::purge_old_deleted_conversations();
 		$results['conversations_deleted'] = $conversations_deleted;
 
+		// Purge terminal chat-runner ledgers and reconcile abandoned workers.
+		$results['chat_jobs_deleted'] = Abilities_Bridge_Chat_Jobs::purge_old();
+
 		// Calculate execution time.
 		$execution_time            = microtime( true ) - $start_time;
 		$results['execution_time'] = round( $execution_time, 2 );

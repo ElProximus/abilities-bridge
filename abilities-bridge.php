@@ -21,6 +21,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 // Define plugin constants.
 define( 'ABILITIES_BRIDGE_VERSION', '1.3.3' );
+define( 'ABILITIES_BRIDGE_DB_VERSION', '2' );
 define( 'ABILITIES_BRIDGE_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ABILITIES_BRIDGE_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'ABILITIES_BRIDGE_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
@@ -54,7 +55,11 @@ spl_autoload_register(
  */
 function abilities_bridge_activate() {
 	require_once ABILITIES_BRIDGE_PLUGIN_DIR . 'includes/class-abilities-bridge-database.php';
-	Abilities_Bridge_Database::create_tables();
+	if ( Abilities_Bridge_Database::create_tables() ) {
+		update_option( 'abilities_bridge_db_version', ABILITIES_BRIDGE_DB_VERSION );
+		delete_option( 'abilities_bridge_db_upgrade_retry_after' );
+		delete_option( 'abilities_bridge_db_upgrade_error' );
+	}
 	Abilities_Bridge_Database::create_website_md();
 
 	// Load memory functions class (database-based storage).
@@ -89,6 +94,7 @@ function abilities_bridge_deactivate() {
 	// Unschedule cleanup cron job.
 	require_once ABILITIES_BRIDGE_PLUGIN_DIR . 'includes/class-abilities-bridge-log-cleanup.php';
 	Abilities_Bridge_Log_Cleanup::unschedule();
+	wp_unschedule_hook( 'abilities_bridge_run_chat_job' );
 
 	flush_rewrite_rules();
 }
