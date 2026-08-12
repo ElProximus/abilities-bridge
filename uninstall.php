@@ -208,83 +208,120 @@ function abilities_bridge_uninstall_delete_attachments() {
 	abilities_bridge_uninstall_delete_flat_attachment_directory( $attachments_dir, $base_real, true );
 }
 
-abilities_bridge_uninstall_delete_attachments();
+/**
+ * Remove all plugin data for the current site.
+ *
+ * Per-site on multisite: table prefixes, options, transients, the
+ * uploads attachments directory, and cron events all resolve through
+ * the switched site's context. (The user-meta deletions are network
+ * -global and simply no-op on repeat passes.)
+ *
+ * @return void
+ */
+function abilities_bridge_uninstall_current_site() {
+	global $wpdb;
 
-// Delete plugin options.
-delete_option( 'abilities_bridge_api_key' );
-delete_option( 'abilities_bridge_openai_api_key' );
-delete_option( 'abilities_bridge_ai_provider' );
-delete_option( 'abilities_bridge_system_prompt' );
-delete_option( 'abilities_bridge_cache_stats' );
-delete_option( 'abilities_bridge_enable_memory' );
-delete_option( 'abilities_bridge_memory_consent' );
-delete_option( 'abilities_bridge_enable_image_attachments' );
-delete_option( 'abilities_bridge_db_version' );
-delete_option( 'abilities_bridge_needs_ability_registration' );
-delete_option( 'abilities_bridge_use_wp_ai_client' );
+	abilities_bridge_uninstall_delete_attachments();
 
-// Delete OAuth options.
-delete_option( 'abilities_bridge_mcp_oauth' );
-delete_option( 'abilities_bridge_oauth_rate_limits' );
-delete_option( 'abilities_bridge_oauth_lockouts' );
-delete_option( 'abilities_bridge_oauth_codes' );
+	// Delete plugin options.
+	delete_option( 'abilities_bridge_api_key' );
+	delete_option( 'abilities_bridge_openai_api_key' );
+	delete_option( 'abilities_bridge_ai_provider' );
+	delete_option( 'abilities_bridge_system_prompt' );
+	delete_option( 'abilities_bridge_cache_stats' );
+	delete_option( 'abilities_bridge_enable_memory' );
+	delete_option( 'abilities_bridge_memory_consent' );
+	delete_option( 'abilities_bridge_enable_image_attachments' );
+	delete_option( 'abilities_bridge_db_version' );
+	delete_option( 'abilities_bridge_db_upgrade_retry_after' );
+	delete_option( 'abilities_bridge_db_upgrade_error' );
+	delete_option( 'abilities_bridge_needs_ability_registration' );
+	delete_option( 'abilities_bridge_use_wp_ai_client' );
 
-// Delete tool enable/disable options.
-delete_option( 'abilities_bridge_enable_memory' );
-delete_option( 'abilities_bridge_enable_abilities_api' );
+	// Delete OAuth options.
+	delete_option( 'abilities_bridge_mcp_oauth' );
+	delete_option( 'abilities_bridge_oauth_rate_limits' );
+	delete_option( 'abilities_bridge_oauth_lockouts' );
+	delete_option( 'abilities_bridge_oauth_codes' );
 
-// Delete user meta for model preferences.
-delete_metadata( 'user', 0, 'abilities_bridge_selected_model', '', true );
-delete_metadata( 'user', 0, 'abilities_bridge_selected_model_anthropic', '', true );
-delete_metadata( 'user', 0, 'abilities_bridge_selected_model_openai', '', true );
-delete_metadata( 'user', 0, 'abilities_bridge_selected_provider', '', true );
+	// Delete tool enable/disable options.
+	delete_option( 'abilities_bridge_enable_memory' );
+	delete_option( 'abilities_bridge_enable_abilities_api' );
 
-// Drop database tables with validation.
-$abilities_bridge_tables = array(
-	'abilities_bridge_conversations',
-	'abilities_bridge_messages',
-	'abilities_bridge_logs',
-	'abilities_bridge_ability_permissions',
-	'abilities_bridge_oauth_clients',
-	'abilities_bridge_oauth_authorization_codes',
-	'abilities_bridge_oauth_access_tokens',
-	'abilities_bridge_activity_log',
-	'abilities_bridge_memories',
-);
+	// Delete user meta for model preferences.
+	delete_metadata( 'user', 0, 'abilities_bridge_selected_model', '', true );
+	delete_metadata( 'user', 0, 'abilities_bridge_selected_model_anthropic', '', true );
+	delete_metadata( 'user', 0, 'abilities_bridge_selected_model_openai', '', true );
+	delete_metadata( 'user', 0, 'abilities_bridge_selected_provider', '', true );
 
-foreach ( $abilities_bridge_tables as $abilities_bridge_table_base ) {
-	$abilities_bridge_table_full      = $wpdb->prefix . $abilities_bridge_table_base;
-	$abilities_bridge_table_validated = abilities_bridge_validate_table_name( $abilities_bridge_table_full );
+	// Drop database tables with validation.
+	$abilities_bridge_tables = array(
+		'abilities_bridge_conversations',
+		'abilities_bridge_messages',
+		'abilities_bridge_logs',
+		'abilities_bridge_ability_permissions',
+		'abilities_bridge_oauth_clients',
+		'abilities_bridge_oauth_authorization_codes',
+		'abilities_bridge_oauth_access_tokens',
+		'abilities_bridge_activity_log',
+		'abilities_bridge_memories',
+		'abilities_bridge_chat_job_steps',
+		'abilities_bridge_chat_jobs',
+	);
 
-	if ( $abilities_bridge_table_validated ) {
-		$wpdb->query( $wpdb->prepare( 'DROP TABLE IF EXISTS %i', $abilities_bridge_table_validated ) );
+	foreach ( $abilities_bridge_tables as $abilities_bridge_table_base ) {
+		$abilities_bridge_table_full      = $wpdb->prefix . $abilities_bridge_table_base;
+		$abilities_bridge_table_validated = abilities_bridge_validate_table_name( $abilities_bridge_table_full );
+
+		if ( $abilities_bridge_table_validated ) {
+			$wpdb->query( $wpdb->prepare( 'DROP TABLE IF EXISTS %i', $abilities_bridge_table_validated ) );
+		}
 	}
+
+	// Delete known transients using WordPress API.
+	delete_transient( 'abilities_bridge_activation_redirect' );
+	delete_transient( 'abilities_bridge_new_credentials' );
+
+	// Delete pending one-time credentials display (stored as an option since
+	// 1.3.3; one option per user — name suffixed with user ID — since the
+	// concurrent-admin fix, plus the legacy shared name).
+	delete_option( 'abilities_bridge_new_credentials_pending' );
+
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- prefix scan over per-user options has no options-API equivalent.
+	$abilities_bridge_pending_credential_options = $wpdb->get_col(
+		$wpdb->prepare(
+			"SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s",
+			$wpdb->esc_like( 'abilities_bridge_new_credentials_pending_' ) . '%'
+		)
+	);
+
+	foreach ( (array) $abilities_bridge_pending_credential_options as $abilities_bridge_pending_credential_option ) {
+		delete_option( $abilities_bridge_pending_credential_option );
+	}
+
+	// Delete pending in-flight OAuth state (stored as an option since 1.3.3).
+	delete_option( 'abilities_bridge_oauth_pending' );
+
+	// Unschedule any cron jobs.
+	wp_clear_scheduled_hook( 'abilities_bridge_oauth_cleanup' );
+	wp_clear_scheduled_hook( 'abilities_bridge_log_cleanup' );
+	wp_clear_scheduled_hook( 'abilities_bridge_daily_cleanup' );
+	wp_clear_scheduled_hook( 'abilities_bridge_run_chat_job' );
 }
 
-// Delete known transients using WordPress API.
-delete_transient( 'abilities_bridge_activation_redirect' );
-delete_transient( 'abilities_bridge_new_credentials' );
+if ( is_multisite() ) {
+	$abilities_bridge_site_ids = get_sites(
+		array(
+			'fields' => 'ids',
+			'number' => 0,
+		)
+	);
 
-// Delete pending one-time credentials display (stored as an option since
-// 1.3.3; one option per user — name suffixed with user ID — since the
-// concurrent-admin fix, plus the legacy shared name).
-delete_option( 'abilities_bridge_new_credentials_pending' );
-
-// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- prefix scan over per-user options has no options-API equivalent.
-$abilities_bridge_pending_credential_options = $wpdb->get_col(
-	$wpdb->prepare(
-		"SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s",
-		$wpdb->esc_like( 'abilities_bridge_new_credentials_pending_' ) . '%'
-	)
-);
-
-foreach ( (array) $abilities_bridge_pending_credential_options as $abilities_bridge_pending_credential_option ) {
-	delete_option( $abilities_bridge_pending_credential_option );
+	foreach ( $abilities_bridge_site_ids as $abilities_bridge_site_id ) {
+		switch_to_blog( (int) $abilities_bridge_site_id );
+		abilities_bridge_uninstall_current_site();
+		restore_current_blog();
+	}
+} else {
+	abilities_bridge_uninstall_current_site();
 }
-
-// Delete pending in-flight OAuth state (stored as an option since 1.3.3).
-delete_option( 'abilities_bridge_oauth_pending' );
-
-// Unschedule any cron jobs.
-wp_clear_scheduled_hook( 'abilities_bridge_oauth_cleanup' );
-wp_clear_scheduled_hook( 'abilities_bridge_log_cleanup' );
