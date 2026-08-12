@@ -4,7 +4,7 @@ Tags: ai, claude, openai, mcp, abilities
 Requires at least: 6.2
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.3.3
+Stable tag: 1.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -13,7 +13,7 @@ MCP server for WordPress. Connect Claude AI or OpenAI to execute WordPress Abili
 
 == Description ==
 
-**Making Connections Possible** | Now with Claude Opus 4.8, in-chat image attachments and screenshots, GPT-5.5, and Custom Apps in ChatGPT
+**Making Connections Possible** | Now with the Claude 5 family (Opus 5, Sonnet 5, Fable 5) and durable background chat: long AI conversations survive page reloads, closed tabs, and slow hosts
 
 Abilities Bridge connects AI to your WordPress site. Use the built-in admin chat, connect via MCP to Claude Desktop, or integrate with other MCP-compatible applications. Supports both Anthropic (Claude) and OpenAI models.
 
@@ -136,6 +136,25 @@ Beacon Campaign Sender is a separate plugin that connects to Abilities Bridge as
 6. Ability permissions list with core read-only abilities and authorized abilities
 
 == Changelog ==
+
+= 1.4.0 =
+* New: durable background chat. Sending a message now runs as a tracked background job on the server instead of one long browser request - slow answers always arrive. Reload the page or close the tab mid-generation and the chat reattaches; come back later and the finished answer is waiting in the conversation
+* New: Stop is instant. Stopping a generation immediately frees the conversation so you can ask again right away; a step already running at the provider may still finish (and be billed) - its result is discarded, and the chat says so honestly
+* New: live progress while the AI works ("Calling ability: ...", elapsed time), with an explicit run-in-foreground fallback for hosts where background processing is unavailable
+* New: Claude 5 models - Opus 5 (recommended default for new users), Sonnet 5, and Fable 5, with previous models available under Legacy; every user's saved model choice is preserved
+* New: if Fable 5's stricter safety system declines an ordinary request, the answer is retried once on Opus 5 and the substitution is disclosed right in the chat
+* New: interrupted OpenAI generations are recovered - the plugin retrieves finished (already billed) results from OpenAI's servers after a worker or connection loss instead of abandoning them
+* Improved: abilities that change data are never automatically re-run after a crash or interruption; the chat reports the uncertainty instead of risking a duplicate action
+* Improved: gateway timeouts (HTTP 408/504/524) are no longer retried automatically - a retry could submit a second billed generation for an answer that may already exist
+* Improved: Claude 5 models get a larger response budget automatically so their internal reasoning cannot truncate visible answers
+* Security: OAuth redirect addresses are now validated as exact domain suffixes - look-alike domains (e.g. claude.ai.example.com) are rejected
+* Security: the OAuth rate limiter no longer trusts spoofable forwarded-IP headers (sites behind a proxy can opt in via the abilities_bridge_trusted_proxy_header filter), and brute-force lockouts are scoped per client and address so an attacker can no longer lock a legitimate client out
+* Fixed: API authentication and rate-limit errors from Claude now show their real message immediately instead of a generic "invalid response" retried four times
+* Fixed: two administrators generating MCP credentials at the same time can no longer overwrite or discard each other's one-time secret (per-user storage)
+* Fixed: two simultaneous OAuth sign-ins can no longer erase each other's in-flight state (the pending store is now serialized)
+* Fixed: uninstalling on a multisite network now removes tables, options, attachments, and scheduled events from every site, not just the main one
+* Fixed: uninstall now clears the correct daily-cleanup scheduled event
+* Privacy: the readme now discloses background job metadata stored locally and OpenAI's server-side retention of background-mode responses
 
 = 1.3.3 =
 * Fixed the one-time display of newly generated MCP client credentials never appearing on sites with a broken or evicting external object cache (e.g. LiteSpeed/Redis/Memcached object caching). The pending credentials are now stored in the database instead of a transient, shown once, then deleted

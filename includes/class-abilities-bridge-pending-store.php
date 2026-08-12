@@ -13,7 +13,7 @@
  * instead of failing the flow.
  *
  * @package Abilities_Bridge
- * @since 1.3.4
+ * @since 1.4.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -23,7 +23,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * DB-backed replacement for the OAuth flow's short-lived transients.
  *
- * @since 1.3.4
+ * @since 1.4.0
  */
 class Abilities_Bridge_Pending_Store {
 
