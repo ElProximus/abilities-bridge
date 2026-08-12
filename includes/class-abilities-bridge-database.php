@@ -32,6 +32,8 @@ class Abilities_Bridge_Database {
 	const TABLE_OAUTH_CODES         = 'abilities_bridge_oauth_authorization_codes';
 	const TABLE_OAUTH_TOKENS        = 'abilities_bridge_oauth_access_tokens';
 	const TABLE_ACTIVITY_LOG        = 'abilities_bridge_activity_log';
+	const TABLE_CHAT_JOBS           = 'abilities_bridge_chat_jobs';
+	const TABLE_CHAT_JOB_STEPS      = 'abilities_bridge_chat_job_steps';
 
 	/**
 	 * Get full table name with prefix.
@@ -52,6 +54,8 @@ class Abilities_Bridge_Database {
 			self::TABLE_OAUTH_CODES,
 			self::TABLE_OAUTH_TOKENS,
 			self::TABLE_ACTIVITY_LOG,
+			self::TABLE_CHAT_JOBS,
+			self::TABLE_CHAT_JOB_STEPS,
 		);
 
 		if ( ! in_array( $table_base, $allowed, true ) ) {
@@ -62,7 +66,9 @@ class Abilities_Bridge_Database {
 	}
 
 	/**
-	 * Create database tables on plugin activation
+	 * Create or upgrade database tables.
+	 *
+	 * @return bool Whether the durable schema is available.
 	 */
 	public static function create_tables() {
 		global $wpdb;
@@ -97,11 +103,16 @@ class Abilities_Bridge_Database {
 		$messages_sql   = "CREATE TABLE IF NOT EXISTS $messages_table (
 			id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
 			conversation_id bigint(20) UNSIGNED NOT NULL,
+			job_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+			job_round int(10) UNSIGNED NOT NULL DEFAULT 0,
+			context_visible tinyint(1) UNSIGNED NOT NULL DEFAULT 1,
 			role varchar(20) NOT NULL,
 			content longtext NOT NULL,
 			created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY  (id),
 			KEY conversation_id (conversation_id),
+			KEY job_round (job_id, job_round),
+			KEY conversation_context (conversation_id, context_visible),
 			KEY created_at (created_at)
 		) $charset_collate;";
 
@@ -176,15 +187,89 @@ class Abilities_Bridge_Database {
 			KEY created_at (created_at)
 		) $charset_collate;";
 
+		// Durable background chat jobs. Messages retain a nullable-equivalent
+		// job_id so superseded turns remain visible to the user while being
+		// excluded from future provider context.
+		$chat_jobs_table = self::table( self::TABLE_CHAT_JOBS );
+		$chat_jobs_sql   = "CREATE TABLE IF NOT EXISTS $chat_jobs_table (
+			id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+			conversation_id bigint(20) UNSIGNED NOT NULL,
+			user_id bigint(20) UNSIGNED NOT NULL,
+			status varchar(20) NOT NULL DEFAULT 'preparing',
+			phase varchar(20) NOT NULL DEFAULT 'ready',
+			provider varchar(20) NOT NULL DEFAULT '',
+			model varchar(100) NOT NULL DEFAULT '',
+			plan_mode tinyint(1) UNSIGNED NOT NULL DEFAULT 0,
+			user_message_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+			public_token char(64) NOT NULL,
+			runner_token char(64) NOT NULL,
+			lock_token char(64) NOT NULL DEFAULT '',
+			cancel_requested tinyint(1) UNSIGNED NOT NULL DEFAULT 0,
+			superseded_by_job_id bigint(20) UNSIGNED NOT NULL DEFAULT 0,
+			attachment_json longtext DEFAULT NULL,
+			provider_response_id varchar(191) NOT NULL DEFAULT '',
+			recovery_status varchar(20) NOT NULL DEFAULT '',
+			error_code varchar(64) NOT NULL DEFAULT '',
+			error_message text DEFAULT NULL,
+			rounds_completed int(10) UNSIGNED NOT NULL DEFAULT 0,
+			last_activity varchar(255) NOT NULL DEFAULT '',
+			created_at datetime NOT NULL,
+			started_at datetime DEFAULT NULL,
+			updated_at datetime DEFAULT NULL,
+			last_dispatched_at datetime DEFAULT NULL,
+			heartbeat_at datetime DEFAULT NULL,
+			lease_expires_at datetime DEFAULT NULL,
+			completed_at datetime DEFAULT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY public_token (public_token),
+			KEY conversation_status (conversation_id, status),
+			KEY user_status (user_id, status),
+			KEY status_created (status, created_at)
+		) $charset_collate;";
+
+		$chat_steps_table = self::table( self::TABLE_CHAT_JOB_STEPS );
+		$chat_steps_sql   = "CREATE TABLE IF NOT EXISTS $chat_steps_table (
+			id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+			job_id bigint(20) UNSIGNED NOT NULL,
+			round_number int(10) UNSIGNED NOT NULL,
+			tool_use_id varchar(191) NOT NULL,
+			tool_name varchar(191) NOT NULL,
+			is_readonly tinyint(1) UNSIGNED NOT NULL DEFAULT 0,
+			status varchar(20) NOT NULL DEFAULT 'pending',
+			input_json longtext DEFAULT NULL,
+			result_json longtext DEFAULT NULL,
+			created_at datetime NOT NULL,
+			started_at datetime DEFAULT NULL,
+			completed_at datetime DEFAULT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY job_tool (job_id, tool_use_id),
+			KEY job_round (job_id, round_number),
+			KEY job_status (job_id, status)
+		) $charset_collate;";
+
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 		dbDelta( $conversations_sql );
 		dbDelta( $messages_sql );
 		dbDelta( $logs_sql );
 		dbDelta( $ability_permissions_sql );
 		dbDelta( $memories_sql );
+		dbDelta( $chat_jobs_sql );
+		dbDelta( $chat_steps_sql );
 
 		// Run upgrade for existing installations.
 		self::upgrade_database();
+
+		$jobs_exists      = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $chat_jobs_table ) ) );
+		$steps_exists     = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $chat_steps_table ) ) );
+		$job_id_exists    = $wpdb->get_var( $wpdb->prepare( 'SHOW COLUMNS FROM %i LIKE %s', $messages_table, 'job_id' ) );
+		$job_round_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW COLUMNS FROM %i LIKE %s', $messages_table, 'job_round' ) );
+		$visible_exists   = $wpdb->get_var( $wpdb->prepare( 'SHOW COLUMNS FROM %i LIKE %s', $messages_table, 'context_visible' ) );
+
+		return $jobs_exists === $chat_jobs_table
+			&& $steps_exists === $chat_steps_table
+			&& 'job_id' === $job_id_exists
+			&& 'job_round' === $job_round_exists
+			&& 'context_visible' === $visible_exists;
 	}
 
 	/**
@@ -195,6 +280,56 @@ class Abilities_Bridge_Database {
 		$conversations_table = self::table( self::TABLE_CONVERSATIONS );
 		$logs_table          = self::table( self::TABLE_LOGS );
 		$ability_table       = self::table( self::TABLE_ABILITY_PERMISSIONS );
+		$messages_table      = self::table( self::TABLE_MESSAGES );
+
+		// dbDelta does not reliably add multiple new columns and composite
+		// indexes to this long-lived custom table, so checkpoint fields use an
+		// explicit idempotent migration inside the DB-version gate.
+		$message_columns = (array) $wpdb->get_col(
+			$wpdb->prepare(
+				'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s',
+				DB_NAME,
+				$messages_table
+			)
+		);
+		if ( ! in_array( 'job_id', $message_columns, true ) ) {
+			$wpdb->query(
+				$wpdb->prepare(
+					'ALTER TABLE %i ADD COLUMN job_id bigint(20) UNSIGNED NOT NULL DEFAULT 0 AFTER conversation_id',
+					$messages_table
+				)
+			);
+		}
+		if ( ! in_array( 'job_round', $message_columns, true ) ) {
+			$wpdb->query(
+				$wpdb->prepare(
+					'ALTER TABLE %i ADD COLUMN job_round int(10) UNSIGNED NOT NULL DEFAULT 0 AFTER job_id',
+					$messages_table
+				)
+			);
+		}
+		if ( ! in_array( 'context_visible', $message_columns, true ) ) {
+			$wpdb->query(
+				$wpdb->prepare(
+					'ALTER TABLE %i ADD COLUMN context_visible tinyint(1) UNSIGNED NOT NULL DEFAULT 1 AFTER job_round',
+					$messages_table
+				)
+			);
+		}
+
+		$message_indexes = (array) $wpdb->get_col(
+			$wpdb->prepare(
+				'SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s',
+				DB_NAME,
+				$messages_table
+			)
+		);
+		if ( ! in_array( 'job_round', $message_indexes, true ) ) {
+			$wpdb->query( $wpdb->prepare( 'ALTER TABLE %i ADD KEY job_round (job_id, job_round)', $messages_table ) );
+		}
+		if ( ! in_array( 'conversation_context', $message_indexes, true ) ) {
+			$wpdb->query( $wpdb->prepare( 'ALTER TABLE %i ADD KEY conversation_context (conversation_id, context_visible)', $messages_table ) );
+		}
 
 		// Check if model column exists.
 		$column_exists = $wpdb->get_results(
@@ -244,8 +379,9 @@ class Abilities_Bridge_Database {
 		// Backfill provider based on model prefix if missing.
 		$wpdb->query(
 			$wpdb->prepare(
-				"UPDATE %i SET provider = 'openai' WHERE (provider IS NULL OR provider = '') AND model LIKE 'gpt-%'",
-				$conversations_table
+				"UPDATE %i SET provider = 'openai' WHERE (provider IS NULL OR provider = '') AND model LIKE %s",
+				$conversations_table,
+				'gpt-%'
 			)
 		);
 
@@ -441,10 +577,10 @@ class Abilities_Bridge_Database {
 		$result = $wpdb->insert(
 			self::table( self::TABLE_CONVERSATIONS ),
 			array(
-				'user_id' => $user_id,
-				'title'   => $title,
+				'user_id'  => $user_id,
+				'title'    => $title,
 				'provider' => $provider,
-				'model'   => $model,
+				'model'    => $model,
 			),
 			array( '%d', '%s', '%s', '%s' )
 		);
@@ -470,7 +606,7 @@ class Abilities_Bridge_Database {
 		);
 
 		if ( $user_id > 0 ) {
-			$query    .= ' AND user_id = %d';
+			$query   .= ' AND user_id = %d';
 			$params[] = $user_id;
 		}
 
@@ -478,6 +614,7 @@ class Abilities_Bridge_Database {
 			$query .= ' AND deleted_at IS NULL';
 		}
 
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- query fragments are fixed above; all values are placeholders.
 		return $wpdb->get_row( $wpdb->prepare( $query, ...$params ) );
 	}
 
@@ -505,11 +642,30 @@ class Abilities_Bridge_Database {
 	/**
 	 * Clear the last OpenAI response id for a conversation.
 	 *
-	 * @param int $conversation_id Conversation ID.
+	 * @param int    $conversation_id     Conversation ID.
+	 * @param string $expected_response_id Response ID that must still own the pointer.
 	 * @return bool
 	 */
-	public static function clear_last_openai_response_id( $conversation_id ) {
-		return self::update_last_openai_response_id( $conversation_id, null );
+	public static function clear_last_openai_response_id( $conversation_id, $expected_response_id = '' ) {
+		global $wpdb;
+
+		if ( '' === (string) $expected_response_id ) {
+			return self::update_last_openai_response_id( $conversation_id, null );
+		}
+
+		// Clear only the pointer owned by this terminal job. A later job may have
+		// already advanced the conversation before a zombie reaches reconciliation.
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- atomic continuation-pointer fence.
+		$updated = $wpdb->query(
+			$wpdb->prepare(
+				'UPDATE %i SET last_openai_response_id = NULL WHERE id = %d AND last_openai_response_id = %s',
+				self::table( self::TABLE_CONVERSATIONS ),
+				(int) $conversation_id,
+				(string) $expected_response_id
+			)
+		);
+
+		return false !== $updated;
 	}
 
 	/**
@@ -521,6 +677,12 @@ class Abilities_Bridge_Database {
 	 */
 	public static function delete_conversation( $conversation_id, $user_id = 0 ) {
 		global $wpdb;
+		if ( $user_id > 0 && ! self::get_conversation( $conversation_id, $user_id ) ) {
+			return false;
+		}
+		if ( class_exists( 'Abilities_Bridge_Chat_Jobs' ) ) {
+			Abilities_Bridge_Chat_Jobs::cancel_for_conversation( $conversation_id );
+		}
 
 		$where = array( 'id' => $conversation_id );
 
@@ -609,6 +771,19 @@ class Abilities_Bridge_Database {
 		// Hard delete logs.
 		$wpdb->delete( self::table( self::TABLE_LOGS ), array( 'conversation_id' => $conversation_id ), array( '%d' ) );
 
+		// Hard delete durable job steps before their parent ledgers.
+		$job_ids = (array) $wpdb->get_col(
+			$wpdb->prepare(
+				'SELECT id FROM %i WHERE conversation_id = %d',
+				self::table( self::TABLE_CHAT_JOBS ),
+				(int) $conversation_id
+			)
+		);
+		foreach ( $job_ids as $job_id ) {
+			$wpdb->delete( self::table( self::TABLE_CHAT_JOB_STEPS ), array( 'job_id' => (int) $job_id ), array( '%d' ) );
+		}
+		$wpdb->delete( self::table( self::TABLE_CHAT_JOBS ), array( 'conversation_id' => $conversation_id ), array( '%d' ) );
+
 		// Hard delete conversation.
 		$result = $wpdb->delete( self::table( self::TABLE_CONVERSATIONS ), array( 'id' => $conversation_id ), array( '%d' ) );
 
@@ -621,19 +796,25 @@ class Abilities_Bridge_Database {
 	 * @param int    $conversation_id Conversation ID.
 	 * @param string $role Message role (user/assistant).
 	 * @param string $content Message content.
+	 * @param int    $job_id Owning chat job, or zero.
+	 * @param bool   $context_visible Whether providers may replay the message.
+	 * @param int    $job_round Provider round within the owning job.
 	 * @return int|false Message ID or false on failure
 	 */
-	public static function add_message( $conversation_id, $role, $content ) {
+	public static function add_message( $conversation_id, $role, $content, $job_id = 0, $context_visible = true, $job_round = 0 ) {
 		global $wpdb;
 
 		$result = $wpdb->insert(
 			self::table( self::TABLE_MESSAGES ),
 			array(
 				'conversation_id' => $conversation_id,
+				'job_id'          => $job_id,
+				'job_round'       => $job_round,
+				'context_visible' => $context_visible ? 1 : 0,
 				'role'            => $role,
 				'content'         => $content,
 			),
-			array( '%d', '%s', '%s' )
+			array( '%d', '%d', '%d', '%d', '%s', '%s' )
 		);
 
 		// Update conversation updated_at timestamp.
@@ -653,19 +834,264 @@ class Abilities_Bridge_Database {
 	/**
 	 * Get all messages for a conversation
 	 *
-	 * @param int $conversation_id Conversation ID.
+	 * @param int  $conversation_id Conversation ID.
+	 * @param bool $context_only Return only provider-visible messages.
 	 * @return array
 	 */
-	public static function get_messages( $conversation_id ) {
+	public static function get_messages( $conversation_id, $context_only = false ) {
 		global $wpdb;
+		if ( $context_only ) {
+			return $wpdb->get_results(
+				$wpdb->prepare(
+					'SELECT * FROM %i WHERE conversation_id = %d AND context_visible = 1 ORDER BY created_at ASC, id ASC',
+					self::table( self::TABLE_MESSAGES ),
+					$conversation_id
+				)
+			);
+		}
 
 		return $wpdb->get_results(
 			$wpdb->prepare(
-				'SELECT * FROM %i WHERE conversation_id = %d ORDER BY created_at ASC',
+				'SELECT * FROM %i WHERE conversation_id = %d ORDER BY created_at ASC, id ASC',
 				self::table( self::TABLE_MESSAGES ),
 				$conversation_id
 			)
 		);
+	}
+
+	/**
+	 * Hide one superseded job's messages from future provider context.
+	 *
+	 * @param int $job_id Job ID.
+	 * @return bool
+	 */
+	public static function hide_job_messages_from_context( $job_id ) {
+		global $wpdb;
+		$conversation_id = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				'SELECT conversation_id FROM %i WHERE job_id = %d LIMIT 1',
+				self::table( self::TABLE_MESSAGES ),
+				(int) $job_id
+			)
+		);
+
+		$result = $wpdb->update(
+			self::table( self::TABLE_MESSAGES ),
+			array( 'context_visible' => 0 ),
+			array( 'job_id' => (int) $job_id ),
+			array( '%d' ),
+			array( '%d' )
+		);
+		if ( $conversation_id ) {
+			wp_cache_delete( 'abilities_bridge_conv_msgs_' . $conversation_id, 'abilities_bridge' );
+		}
+
+		return false !== $result;
+	}
+
+	/**
+	 * Restore every persisted message for a recovered job to provider context.
+	 *
+	 * @param int $job_id Job ID.
+	 * @return bool
+	 */
+	public static function show_job_messages_in_context( $job_id ) {
+		global $wpdb;
+
+		$conversation_id = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				'SELECT conversation_id FROM %i WHERE job_id = %d LIMIT 1',
+				self::table( self::TABLE_MESSAGES ),
+				(int) $job_id
+			)
+		);
+		$result          = $wpdb->update(
+			self::table( self::TABLE_MESSAGES ),
+			array( 'context_visible' => 1 ),
+			array( 'job_id' => (int) $job_id ),
+			array( '%d' ),
+			array( '%d' )
+		);
+		if ( $conversation_id ) {
+			wp_cache_delete( 'abilities_bridge_conv_msgs_' . $conversation_id, 'abilities_bridge' );
+		}
+
+		return false !== $result;
+	}
+
+	/**
+	 * Keep only a terminal job's longest complete tool-protocol prefix visible.
+	 *
+	 * @param int $job_id         Job ID.
+	 * @param int $user_message_id Initial user message ID.
+	 * @param int $through_round   Last complete provider/tool round.
+	 * @return bool
+	 */
+	public static function set_job_context_prefix( $job_id, $user_message_id, $through_round ) {
+		global $wpdb;
+
+		$table           = self::table( self::TABLE_MESSAGES );
+		$conversation_id = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				'SELECT conversation_id FROM %i WHERE job_id = %d LIMIT 1',
+				$table,
+				(int) $job_id
+			)
+		);
+		$hidden         = $wpdb->update(
+			$table,
+			array( 'context_visible' => 0 ),
+			array( 'job_id' => (int) $job_id ),
+			array( '%d' ),
+			array( '%d' )
+		);
+
+		if ( false === $hidden ) {
+			return false;
+		}
+
+		if ( $through_round > 0 ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- scoped transcript checkpoint update.
+			$shown = $wpdb->query(
+				$wpdb->prepare(
+					'UPDATE %i SET context_visible = 1 WHERE job_id = %d AND (id = %d OR (job_round > 0 AND job_round <= %d))',
+					$table,
+					(int) $job_id,
+					(int) $user_message_id,
+					(int) $through_round
+				)
+			);
+			if ( false === $shown ) {
+				return false;
+			}
+		}
+
+		if ( $conversation_id ) {
+			wp_cache_delete( 'abilities_bridge_conv_msgs_' . $conversation_id, 'abilities_bridge' );
+		}
+
+		return true;
+	}
+
+	/**
+	 * Determine whether one durable round already has its exact tool-result set.
+	 *
+	 * @param int   $job_id       Job ID.
+	 * @param int   $round_number Provider round.
+	 * @param array $tool_use_ids Expected opaque provider tool IDs.
+	 * @return bool
+	 */
+	public static function has_job_tool_result_message( $job_id, $round_number, $tool_use_ids ) {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- durable checkpoint lookup.
+		$rows = (array) $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT content FROM %i WHERE job_id = %d AND job_round = %d AND role = 'user' ORDER BY id ASC",
+				self::table( self::TABLE_MESSAGES ),
+				(int) $job_id,
+				(int) $round_number
+			)
+		);
+		$expected = array_map( 'strval', (array) $tool_use_ids );
+		sort( $expected, SORT_STRING );
+
+		foreach ( $rows as $row ) {
+			$content = json_decode( $row->content, true );
+			if ( ! is_array( $content ) ) {
+				continue;
+			}
+
+			$actual = array();
+			foreach ( $content as $block ) {
+				if ( is_array( $block ) && 'tool_result' === ( $block['type'] ?? '' ) && isset( $block['tool_use_id'] ) ) {
+					$actual[] = (string) $block['tool_use_id'];
+				}
+			}
+			sort( $actual, SORT_STRING );
+			if ( $expected === $actual ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Insert or replace one durable round's tool-result protocol message.
+	 *
+	 * Callers serialize this operation with the shared conversation lock.
+	 *
+	 * @param int   $conversation_id Conversation ID.
+	 * @param int   $job_id         Job ID.
+	 * @param int   $round_number   Provider round.
+	 * @param array $results        Tool-result blocks.
+	 * @return int|WP_Error Message ID or error.
+	 */
+	public static function upsert_job_tool_result_message( $conversation_id, $job_id, $round_number, $results ) {
+		global $wpdb;
+
+		$table = self::table( self::TABLE_MESSAGES );
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- durable checkpoint lookup.
+		$message_id = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT id FROM %i WHERE job_id = %d AND job_round = %d AND role = 'user' ORDER BY id ASC LIMIT 1",
+				$table,
+				(int) $job_id,
+				(int) $round_number
+			)
+		);
+		$content = wp_json_encode( $results );
+
+		if ( $message_id ) {
+			$updated = $wpdb->update(
+				$table,
+				array(
+					'content'         => $content,
+					'context_visible' => 1,
+				),
+				array( 'id' => $message_id ),
+				array( '%s', '%d' ),
+				array( '%d' )
+			);
+			if ( false === $updated ) {
+				return new WP_Error( 'tool_result_persistence_failed', __( 'The durable tool-result message could not be updated.', 'abilities-bridge' ) );
+			}
+			wp_cache_delete( 'abilities_bridge_conv_msgs_' . (int) $conversation_id, 'abilities_bridge' );
+
+			return $message_id;
+		}
+
+		$message_id = self::add_message( $conversation_id, 'user', $content, $job_id, true, $round_number );
+		if ( ! $message_id ) {
+			return new WP_Error( 'tool_result_persistence_failed', __( 'The durable tool-result message could not be saved.', 'abilities-bridge' ) );
+		}
+
+		return (int) $message_id;
+	}
+
+	/**
+	 * Delete a single message created during a failed enqueue.
+	 *
+	 * @param int $message_id      Message ID.
+	 * @param int $conversation_id Conversation ID.
+	 * @return bool
+	 */
+	public static function delete_message( $message_id, $conversation_id ) {
+		global $wpdb;
+
+		$result = $wpdb->delete(
+			self::table( self::TABLE_MESSAGES ),
+			array(
+				'id'              => (int) $message_id,
+				'conversation_id' => (int) $conversation_id,
+			),
+			array( '%d', '%d' )
+		);
+
+		wp_cache_delete( 'abilities_bridge_conv_msgs_' . (int) $conversation_id, 'abilities_bridge' );
+
+		return false !== $result;
 	}
 
 	/**
@@ -970,6 +1396,8 @@ class Abilities_Bridge_Database {
 			'abilities_bridge_oauth_access_tokens',
 			'abilities_bridge_activity_log',
 			'abilities_bridge_memories',
+			'abilities_bridge_chat_jobs',
+			'abilities_bridge_chat_job_steps',
 		);
 
 		// Remove prefix and check against allowlist.

@@ -27,6 +27,27 @@ class Abilities_Bridge_Message_Processor {
 	private $orchestrator;
 
 	/**
+	 * Result details retained for the legacy synchronous wrapper.
+	 *
+	 * @var array
+	 */
+	private $last_run_result = array();
+
+	/**
+	 * Most recently persisted initial user message.
+	 *
+	 * @var int
+	 */
+	private $initial_user_message_id = 0;
+
+	/**
+	 * Plan-mode snapshot for the legacy synchronous wrapper.
+	 *
+	 * @var bool
+	 */
+	private $initial_plan_mode = false;
+
+	/**
 	 * Constructor
 	 *
 	 * @param Abilities_Bridge_MCP_Orchestrator|null $orchestrator Optional orchestrator instance.
@@ -45,320 +66,606 @@ class Abilities_Bridge_Message_Processor {
 	 * @return array Result with success status and response/error
 	 */
 	public function send_and_process( $conversation, $user_message, $plan_mode = false, $image_blocks = array() ) {
-		// Set overall timeout for entire conversation.
-		$conversation_start    = time();
-		$max_conversation_time = 300; // 5 minutes max for entire conversation.
+		$message_id = $this->begin( $conversation, $user_message, $plan_mode, $image_blocks );
+		if ( is_wp_error( $message_id ) ) {
+			return array(
+				'success'    => false,
+				'error'      => self::get_user_friendly_error( $message_id ),
+				'error_data' => $message_id->get_error_data(),
+			);
+		}
 
-		// Add user message to conversation.
+		$legacy_timeout = static function () {
+			return 300;
+		};
+		add_filter( 'abilities_bridge_ai_request_timeout', $legacy_timeout, 999 );
+		try {
+			$result = $this->run_loop( $conversation, null, '' );
+		} finally {
+			remove_filter( 'abilities_bridge_ai_request_timeout', $legacy_timeout, 999 );
+		}
+		if ( is_wp_error( $result ) ) {
+			return array(
+				'success'    => false,
+				'error'      => self::get_user_friendly_error( $result ),
+				'error_data' => $result->get_error_data(),
+			);
+		}
+
+		return array_merge(
+			array( 'success' => true ),
+			$this->last_run_result
+		);
+	}
+
+	/**
+	 * Persist the initial user turn without starting a provider request.
+	 *
+	 * @param Abilities_Bridge_Conversation $conversation Conversation instance.
+	 * @param string                        $user_message User text.
+	 * @param bool                          $plan_mode Plan mode (pinned by the job row).
+	 * @param array                         $image_blocks Stored image blocks.
+	 * @param int                           $job_id Owning durable job.
+	 * @return int|WP_Error Message ID or error.
+	 */
+	public function begin( $conversation, $user_message, $plan_mode = false, $image_blocks = array(), $job_id = 0 ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- signature pins enqueue context.
 		$user_content = class_exists( 'Abilities_Bridge_Attachments' )
 			? Abilities_Bridge_Attachments::build_user_content( $user_message, $image_blocks )
 			: $user_message;
-		$conversation->add_user_message( $user_content );
-		$current_user_message_index = count( $conversation->get_messages() ) - 1;
 
-		$provider             = Abilities_Bridge_AI_Provider::get_current_provider();
-		$model                = null;
-		$conversation_id      = $conversation->get_id();
-		$previous_response_id = '';
-
-		if ( $conversation_id ) {
-			$conversation_data = Abilities_Bridge_Database::get_conversation( $conversation_id, get_current_user_id() );
-			if ( $conversation_data ) {
-				if ( ! empty( $conversation_data->provider ) ) {
-					$provider = $conversation_data->provider;
-				} elseif ( ! empty( $conversation_data->model ) ) {
-					$provider = Abilities_Bridge_AI_Provider::infer_provider_from_model( $conversation_data->model, $provider );
-				}
-
-				if ( isset( $conversation_data->model ) ) {
-					$conversation_model = $conversation_data->model;
-					if ( Abilities_Bridge_AI_Provider::PROVIDER_OPENAI === $provider ) {
-						$conversation_model = Abilities_Bridge_OpenAI_API::normalize_model( $conversation_model );
-					}
-
-					$available_models = Abilities_Bridge_AI_Provider::get_available_models( $provider );
-					if ( isset( $available_models[ $conversation_model ] ) ) {
-						$model = $conversation_model;
-					}
-				}
-
-				if ( Abilities_Bridge_AI_Provider::PROVIDER_OPENAI === $provider && ! empty( $conversation_data->last_openai_response_id ) ) {
-					$previous_response_id = $conversation_data->last_openai_response_id;
-				}
-			}
+		$message_id = $conversation->add_user_message( $user_content, (int) $job_id );
+		if ( is_wp_error( $message_id ) ) {
+			return $message_id;
 		}
 
-		if ( empty( $model ) ) {
-			$model = Abilities_Bridge_AI_Provider::get_selected_model( $provider );
+		$this->initial_user_message_id = (int) $message_id;
+		$this->initial_plan_mode       = (bool) $plan_mode;
+
+		return (int) $message_id;
+	}
+
+	/**
+	 * Run or resume the provider/tool loop.
+	 *
+	 * @param Abilities_Bridge_Conversation $conversation Conversation instance.
+	 * @param object|null                   $job Durable job, or null for legacy synchronous operation.
+	 * @param string                        $lock Worker lock token.
+	 * @return true|WP_Error True on success, otherwise a single error contract.
+	 */
+	public function run_loop( $conversation, $job = null, $lock = '' ) {
+		$background      = is_object( $job );
+		$conversation_id = (int) $conversation->get_id();
+		$context         = $this->resolve_provider_context( $conversation_id, $job );
+		$provider        = $context['provider'];
+		$model           = $context['model'];
+		$previous_id     = $context['previous_response_id'];
+		$ai_client       = Abilities_Bridge_AI_Provider::create_client( $provider );
+		$tools           = Abilities_Bridge_AI_Provider::get_tool_definitions();
+		$started_at      = time();
+		$rounds          = $background ? (int) $job->rounds_completed : 0;
+		$max_rounds      = 10;
+		$final_response  = '';
+		$tool_usage      = array();
+		$last_results    = array();
+		$awaiting_text   = false;
+		$received_text   = false;
+		$finished        = false;
+		$user_message_id = $background ? (int) $job->user_message_id : $this->initial_user_message_id;
+		$plan_mode       = $background ? (bool) $job->plan_mode : $this->initial_plan_mode;
+
+		if ( $background && in_array( $job->phase, array( 'tools_pending', 'tool_inflight' ), true ) ) {
+			$tool_result = $this->resume_checkpointed_tools( $conversation, $job, $lock, $tool_usage, $last_results );
+			if ( is_wp_error( $tool_result ) ) {
+				return $tool_result;
+			}
+			$job = Abilities_Bridge_Chat_Jobs::get( $job->id );
 		}
 
-		// Initialize AI provider client.
-		$ai_client = Abilities_Bridge_AI_Provider::create_client( $provider );
-		$tools     = Abilities_Bridge_AI_Provider::get_tool_definitions();
-
-		// Tool use loop - continue until Claude stops requesting tools.
-		$max_iterations    = 10; // Reduced from 20 to prevent excessive loops.
-		$iteration         = 0;
-		$final_response    = '';
-		$tool_errors       = array();
-		$has_pending_tools = false; // Track if we have tools that need results.
-		$tool_usage        = array(); // Track all tools used for activity log.
-		$last_tool_results = array(); // Track tool output for fallback responses.
-		$awaiting_tool_final_response      = false; // True after tool results are sent back to the model.
-		$received_post_tool_text_response  = false; // True once the model responds with text after tool execution.
-
-		while ( $iteration < $max_iterations ) {
-			++$iteration;
-
-			// Check conversation timeout BEFORE sending to Claude (unless we have pending tools).
-			// If we have pending tools from a previous iteration, we MUST complete them.
-			if ( ! $has_pending_tools && time() - $conversation_start > $max_conversation_time ) {
-				$final_response .= "\n\n⚠️ Conversation timeout reached. Some operations may not have completed.";
-				break;
+		while ( $rounds < $max_rounds ) {
+			if ( ! $background && time() - $started_at > 300 ) {
+				return new WP_Error( 'conversation_timeout', __( 'The request exceeded the synchronous time limit.', 'abilities-bridge' ) );
 			}
 
-			// Send messages to Claude with automatic retry for transient errors.
-			$max_retries = 3;
-			$retry_delay = 1; // seconds.
-
-			for ( $retry = 0; $retry <= $max_retries; $retry++ ) {
-				if ( $retry > 0 ) {
-					// Exponential backoff: 1s, 2s, 4s.
-					sleep( $retry_delay * pow( 2, $retry - 1 ) );
+			if ( $background ) {
+				$guard = $this->guard_worker( $job->id, $lock );
+				if ( is_wp_error( $guard ) ) {
+					return $guard;
 				}
 
-				if ( Abilities_Bridge_AI_Provider::PROVIDER_OPENAI === $provider && method_exists( $ai_client, 'set_previous_response_id' ) ) {
-					$ai_client->set_previous_response_id( $previous_response_id );
+				$request_timeout = (int) apply_filters( 'abilities_bridge_ai_request_timeout', 300 );
+				if ( ! Abilities_Bridge_Chat_Jobs::set_phase( $job->id, $lock, 'provider_inflight', $request_timeout + 90 ) ) {
+					return new WP_Error( 'job_lock_lost', __( 'The chat worker lost its execution lock.', 'abilities-bridge' ) );
 				}
-
-				$response = $ai_client->send_message(
-					$conversation->get_messages_for_api(
-						array(
-							'hydrate_image_message_index' => $current_user_message_index,
-						)
-					),
-					$tools,
-					4096,
-					$model
-				);
-
-				if ( ! is_wp_error( $response ) ) {
-					break; // Success - continue processing.
+				$guard = $this->guard_worker( $job->id, $lock );
+				if ( is_wp_error( $guard ) ) {
+					return $guard;
 				}
-
-				// Check if error is retryable.
-				$error_data   = $response->get_error_data();
-				$is_retryable = isset( $error_data['retryable'] ) && $error_data['retryable'];
-				$http_status  = isset( $error_data['status'] ) ? $error_data['status'] : 0;
-
-				$should_retry = (
-					$is_retryable ||
-					$http_status >= 500 ||
-					429 === $http_status ||
-					in_array( $http_status, array( 502, 503, 504 ), true )
-				);
-
-				// If not retryable or last retry, handle error.
-				if ( ! $should_retry || $retry === $max_retries ) {
-					if ( 1 === $iteration ) {
-						// First message - show user-friendly error.
-						return array(
-							'success'    => false,
-							'error'      => self::get_user_friendly_error( $response ),
-							'error_data' => $response->get_error_data(),
-						);
-					} else {
-						// Mid-conversation - log silently.
-						Abilities_Bridge_Logger::log_action(
-							$conversation_id,
-							'api_error_after_retries',
-							$response->get_error_message()
-						);
-						break;
-					}
-				}
+				Abilities_Bridge_Chat_Jobs::touch_activity( $job->id, $lock, __( 'Waiting for the AI provider', 'abilities-bridge' ) );
+				do_action( 'abilities_bridge_chat_job_checkpoint', 'provider_inflight', (int) $job->id, 0 );
 			}
 
-			// If still error after retries, skip this iteration.
+			if ( Abilities_Bridge_AI_Provider::PROVIDER_OPENAI === $provider && method_exists( $ai_client, 'set_previous_response_id' ) ) {
+				$ai_client->set_previous_response_id( $previous_id );
+			}
+
+			$response = $this->send_with_billing_safe_retries(
+				$ai_client,
+				$conversation->get_messages_for_api( array( 'hydrate_image_message_id' => $user_message_id ) ),
+				$tools,
+				$model,
+				$provider,
+				$background ? $job : null,
+				$lock
+			);
 			if ( is_wp_error( $response ) ) {
-				break;
+				return $response;
 			}
 
-			if ( Abilities_Bridge_AI_Provider::PROVIDER_OPENAI === $provider && $conversation_id && ! empty( $response['response_id'] ) ) {
-				$previous_response_id = $response['response_id'];
-				Abilities_Bridge_Database::update_last_openai_response_id( $conversation_id, $previous_response_id );
+			if ( $background ) {
+				do_action( 'abilities_bridge_chat_job_checkpoint', 'provider_returned', (int) $job->id, 0 );
+				$guard = $this->guard_worker( $job->id, $lock );
+				if ( is_wp_error( $guard ) ) {
+					return $guard;
+				}
 			}
 
-			// Check stop reason.
-			$stop_reason = isset( $response['stop_reason'] ) ? $response['stop_reason'] : '';
-
-			// Extract content from response.
-			$content_blocks = isset( $response['content'] ) ? $response['content'] : array();
-
-			// Add assistant message to conversation.
-			$conversation->add_assistant_message( $content_blocks );
-
-			// Process content blocks.
+			$content_blocks = isset( $response['content'] ) && is_array( $response['content'] ) ? $response['content'] : array();
 			$text_responses = array();
 			$tool_uses      = array();
-
 			foreach ( $content_blocks as $block ) {
-				if ( isset( $block['type'] ) && 'text' === $block['type'] ) {
+				if ( isset( $block['type'] ) && 'text' === $block['type'] && isset( $block['text'] ) ) {
 					$text_responses[] = $block['text'];
 				} elseif ( isset( $block['type'] ) && 'tool_use' === $block['type'] ) {
 					$tool_uses[] = $block;
 				}
 			}
+			$has_tools      = ! empty( $tool_uses ) && 'tool_use' === ( $response['stop_reason'] ?? '' );
+			$intended_round = $rounds + 1;
+			$message_id     = $conversation->add_assistant_message(
+				$content_blocks,
+				$background ? (int) $job->id : 0,
+				$background ? $intended_round : 0
+			);
+			if ( is_wp_error( $message_id ) ) {
+				return new WP_Error(
+					'ai_generation_ambiguous',
+					__( 'The AI answered, but the reply could not be saved safely. It was not submitted again.', 'abilities-bridge' ),
+					array( 'provider' => $provider )
+				);
+			}
+			if ( $background && ! Abilities_Bridge_Chat_Jobs::worker_may_continue( $job->id, $lock ) ) {
+				Abilities_Bridge_Chat_Jobs::reconcile_terminal_context( $job->id );
+				Abilities_Bridge_Chat_Jobs::mark_cancelled( $job->id, $lock );
+				return new WP_Error( 'job_cancelled', __( 'The chat job was stopped before its reply could be published.', 'abilities-bridge' ) );
+			}
 
-			// Collect text responses.
+			if ( $background && $has_tools ) {
+				$seeded = Abilities_Bridge_Chat_Job_Steps::seed( $job->id, $intended_round, $tool_uses );
+				if ( is_wp_error( $seeded ) ) {
+					Abilities_Bridge_Chat_Jobs::reconcile_terminal_context( $job->id );
+					return $seeded;
+				}
+			}
+
+			if ( $background ) {
+				$new_rounds = Abilities_Bridge_Chat_Jobs::checkpoint_provider_round( $job->id, $lock, $has_tools ? 'tools_pending' : 'completed' );
+				if ( false === $new_rounds ) {
+					Abilities_Bridge_Chat_Jobs::reconcile_terminal_context( $job->id );
+					if ( Abilities_Bridge_Chat_Jobs::worker_may_continue( $job->id, $lock ) ) {
+						return new WP_Error( 'provider_checkpoint_failed', __( 'The AI replied, but its durable round checkpoint could not be finalized.', 'abilities-bridge' ) );
+					}
+					return new WP_Error( 'job_cancelled', __( 'The chat job was stopped before its reply could be finalized.', 'abilities-bridge' ) );
+				}
+				$rounds = $new_rounds;
+			} else {
+				$rounds = $intended_round;
+			}
+
+			if ( ! empty( $response['response_id'] ) && Abilities_Bridge_AI_Provider::PROVIDER_OPENAI === $provider ) {
+				if ( $background && $has_tools && ! Abilities_Bridge_Chat_Jobs::worker_may_continue( $job->id, $lock ) ) {
+					Abilities_Bridge_Chat_Jobs::reconcile_terminal_context( $job->id );
+					return new WP_Error( 'job_cancelled', __( 'The chat job was stopped.', 'abilities-bridge' ) );
+				}
+				$previous_id = sanitize_text_field( $response['response_id'] );
+				Abilities_Bridge_Database::update_last_openai_response_id( $conversation_id, $previous_id );
+				if ( $background ) {
+					Abilities_Bridge_Chat_Jobs::store_provider_response_id( $job->id, $lock, $previous_id );
+				}
+			}
+
 			if ( ! empty( $text_responses ) ) {
 				$final_response .= implode( "\n\n", $text_responses ) . "\n\n";
-
-				if ( $awaiting_tool_final_response ) {
-					$received_post_tool_text_response = true;
-				}
+				$received_text   = $awaiting_text || $received_text;
 			}
 
-			// If no tool use, we're done.
-			if ( empty( $tool_uses ) || 'tool_use' !== $stop_reason ) {
-				$has_pending_tools = false;
+			if ( ! $has_tools ) {
+				$finished = true;
 				break;
 			}
 
-			// IMPORTANT: If we ONLY have tool_use and NO text response yet,.
-			// don't return partial response. Let the loop continue to execute tools.
-			// and get the final response from Claude.
-			if ( empty( $text_responses ) && ! empty( $tool_uses ) && 'tool_use' === $stop_reason ) {
-				$has_pending_tools = true;
-				// Continue to tool execution below instead of returning early.
+			if ( $background ) {
+				$job         = Abilities_Bridge_Chat_Jobs::get( $job->id );
+				$tool_result = $this->resume_checkpointed_tools( $conversation, $job, $lock, $tool_usage, $last_results );
+			} else {
+				$tool_result = $this->execute_synchronous_tools( $conversation, $tool_uses, $plan_mode, $conversation_id, $tool_usage, $last_results );
 			}
 
-			// We have tools to execute.
-			$has_pending_tools = true;
-
-			// Process tool uses.
-			$tool_results     = array();
-			$any_tool_skipped = false;
-
-			foreach ( $tool_uses as $tool_use ) {
-				$tool_name  = $tool_use['name'];
-				$tool_input = $tool_use['input'];
-				$tool_id    = $tool_use['id'];
-
-				// Track tool usage for activity log.
-				$tool_usage[] = array(
-					'tool'  => $tool_name,
-					'input' => $tool_input,
-				);
-
-				// Log tool activity for real-time progress display.
-				$progress_message = self::get_tool_progress_message( $tool_name, $tool_input );
-
-				Abilities_Bridge_Logger::log_tool_progress(
-					$conversation_id,
-					$tool_name,
-					'processing',
-					$progress_message
-				);
-
-				// Check timeout BEFORE executing EACH tool (prevents mid-execution timeout).
-				$elapsed   = time() - $conversation_start;
-				$remaining = $max_conversation_time - $elapsed;
-
-				if ( $remaining < 15 ) {
-					// Not enough time to safely execute this tool - skip it.
-					$result           = array(
-						'success'                => false,
-						'error'                  => "Tool execution skipped: {$remaining} seconds remaining, approaching conversation timeout limit",
-						'skipped_due_to_timeout' => true,
-						'time_remaining'         => $remaining,
-					);
-					$any_tool_skipped = true;
-
-					// Log skip event.
-					Abilities_Bridge_Logger::log_tool_progress(
-						$conversation_id,
-						$tool_name,
-						'skipped',
-						"⏱️ Skipped (timeout approaching): {$remaining}s remaining"
-					);
-				} else {
-					// Safe to execute - we have enough time.
-					$result = $this->execute_tool( $tool_name, $tool_input, $plan_mode );
-				}
-
-				// Log the function call.
-				Abilities_Bridge_Logger::log_tool_execution(
-					$tool_name,
-					$tool_input,
-					$result,
-					$conversation_id,
-					'admin'
-				);
-
-				// Mark tool as completed.
-				if ( isset( $result['success'] ) && $result['success'] ) {
-					Abilities_Bridge_Logger::log_tool_progress(
-						$conversation_id,
-						$tool_name,
-						'completed',
-						'✅ ' . $progress_message
-					);
-				}
-
-				// Format result for Claude.
-				$tool_results[] = array(
-					'type'        => 'tool_result',
-					'tool_use_id' => $tool_id,
-					'content'     => wp_json_encode( $result ),
-				);
+			if ( is_wp_error( $tool_result ) ) {
+				return $tool_result;
 			}
-
-			// Add tool results as user message - CRITICAL: This must always happen.
-			$conversation->add_user_message_array( $tool_results );
-			$last_tool_results = $tool_results;
-			$awaiting_tool_final_response = true;
-
-			// Mark tools as processed.
-			$has_pending_tools = false;
-
-			// If any tools were skipped due to timeout, exit after saving tool results.
-			if ( $any_tool_skipped ) {
-				$final_response .= "\n\n⚠️ Conversation approaching timeout limit. Some tool executions were skipped.";
-				break;
-			}
+			$awaiting_text = true;
 		}
 
-		// Final activity log before returning to user.
-		Abilities_Bridge_Logger::log_tool_progress(
-			$conversation_id,
-			'response',
-			'completed',
-			'✅ Processing complete, preparing response...'
-		);
-
-		// VALIDATION: Ensure we have a non-empty response.
-		// If response is empty and we executed tools, something went wrong.
-		$final_response_trimmed = trim( $final_response );
-		if ( ! empty( $tool_usage ) && ( empty( $final_response_trimmed ) || ! $received_post_tool_text_response ) ) {
-			// Tools were executed but no final response received.
-			// Log this issue for debugging.
-			Abilities_Bridge_Logger::log_action(
-				$conversation_id,
-				empty( $final_response_trimmed ) ? 'empty_response_with_tool_usage' : 'missing_post_tool_response',
-				'Warning: Tool execution completed without a final post-tool text response. Iterations: ' . $iteration
-			);
-
-			// Return a useful fallback instead of leaving the chat bubble stuck.
-			$final_response_trimmed = self::build_tool_result_fallback_response( $tool_usage, $last_tool_results );
+		if ( ! $finished && $rounds >= $max_rounds ) {
+			return new WP_Error( 'max_rounds_reached', __( 'The AI reached the maximum number of tool rounds for one request.', 'abilities-bridge' ) );
 		}
 
-		return array(
-			'success'    => true,
-			'response'   => $final_response_trimmed,
-			'iterations' => $iteration,
+		$final_response = trim( $final_response );
+		if ( ! empty( $tool_usage ) && ( '' === $final_response || ! $received_text ) ) {
+			$final_response = self::build_tool_result_fallback_response( $tool_usage, $last_results );
+		}
+
+		$this->last_run_result = array(
+			'response'   => $final_response,
+			'iterations' => $rounds,
 			'tool_usage' => $tool_usage,
 		);
+
+		Abilities_Bridge_Logger::log_tool_progress( $conversation_id, 'response', 'completed', '✅ Processing complete, preparing response...' );
+
+		return true;
+	}
+
+	/**
+	 * Resolve the provider/model snapshot and continuation pointer.
+	 *
+	 * @param int         $conversation_id Conversation ID.
+	 * @param object|null $job Durable job.
+	 * @return array
+	 */
+	private function resolve_provider_context( $conversation_id, $job ) {
+		$provider             = is_object( $job ) && ! empty( $job->provider ) ? $job->provider : Abilities_Bridge_AI_Provider::get_current_provider();
+		$model                = is_object( $job ) && ! empty( $job->model ) ? $job->model : '';
+		$previous_response_id = '';
+		$data                 = Abilities_Bridge_Database::get_conversation( $conversation_id, get_current_user_id() );
+
+		if ( $data ) {
+			if ( ! is_object( $job ) ) {
+				if ( ! empty( $data->provider ) ) {
+					$provider = $data->provider;
+				} elseif ( ! empty( $data->model ) ) {
+					$provider = Abilities_Bridge_AI_Provider::infer_provider_from_model( $data->model, $provider );
+				}
+				$model = ! empty( $data->model ) ? $data->model : '';
+			}
+			if ( Abilities_Bridge_AI_Provider::PROVIDER_OPENAI === $provider && ! empty( $data->last_openai_response_id ) ) {
+				$previous_response_id = $data->last_openai_response_id;
+			}
+		}
+
+		if ( Abilities_Bridge_AI_Provider::PROVIDER_OPENAI === $provider ) {
+			$model = Abilities_Bridge_OpenAI_API::normalize_model( $model );
+		}
+		$available = Abilities_Bridge_AI_Provider::get_available_models( $provider );
+		if ( empty( $model ) || ! isset( $available[ $model ] ) ) {
+			$model = Abilities_Bridge_AI_Provider::get_selected_model( $provider );
+		}
+
+		return compact( 'provider', 'model', 'previous_response_id' );
+	}
+
+	/**
+	 * Submit one generation with the billing-risk-minimized retry policy.
+	 *
+	 * @param object      $client Provider client.
+	 * @param array       $messages Provider-formatted messages.
+	 * @param array       $tools Provider tool definitions.
+	 * @param string      $model Model ID.
+	 * @param string      $provider Provider key.
+	 * @param object|null $job Durable job, if any.
+	 * @param string      $lock Worker lock token.
+	 * @return array|WP_Error
+	 */
+	private function send_with_billing_safe_retries( $client, $messages, $tools, $model, $provider, $job, $lock ) {
+		$max_retries   = 3;
+		$retry         = 0;
+		$attempt_model = $model;
+		$fallback_used = false;
+
+		while ( $retry <= $max_retries ) {
+			if ( $retry > 0 ) {
+				sleep( (int) pow( 2, $retry - 1 ) );
+			}
+
+			if ( is_object( $job ) ) {
+				$guard = $this->guard_worker( $job->id, $lock );
+				if ( is_wp_error( $guard ) ) {
+					return $guard;
+				}
+				$request_timeout = max( 1, (int) apply_filters( 'abilities_bridge_ai_request_timeout', 300 ) );
+				if ( ! Abilities_Bridge_Chat_Jobs::extend_lease( $job->id, $lock, $request_timeout + 90 ) ) {
+					return new WP_Error( 'job_lock_lost', __( 'The chat worker lost its execution lock.', 'abilities-bridge' ) );
+				}
+			}
+
+			$response = $client->send_message( $messages, $tools, 4096, $attempt_model );
+			if ( ! is_wp_error( $response ) ) {
+				if ( $fallback_used && isset( $response['content'] ) && is_array( $response['content'] ) ) {
+					array_unshift(
+						$response['content'],
+						array(
+							'type' => 'text',
+							'text' => __( '_Answered by Claude Opus 5 after Fable 5 declined the request._', 'abilities-bridge' ),
+						)
+					);
+				}
+				return $response;
+			}
+
+			$error_data = (array) $response->get_error_data();
+			if ( 'ai_refusal' === $response->get_error_code() && ! $fallback_used && ! empty( $error_data['fallback_model'] ) ) {
+				$attempt_model = (string) $error_data['fallback_model'];
+				$fallback_used = true;
+				$retry         = 0;
+				if ( is_object( $job ) ) {
+					Abilities_Bridge_Chat_Jobs::touch_activity( $job->id, $lock, __( 'Fable declined; waiting for Claude Opus', 'abilities-bridge' ) );
+				}
+				continue;
+			}
+
+			$response = $this->normalize_generation_error( $response, $provider );
+			if ( in_array( $response->get_error_code(), array( 'openai_fetch_failed', 'openai_fetch_parse_error', 'openai_poll_timeout', 'openai_background_failed', 'job_cancelled' ), true ) ) {
+				// These errors happen after OpenAI returned a stored response ID.
+				// Any retry here would create a second generation; recovery uses GET.
+				return $response;
+			}
+			$error_data     = (array) $response->get_error_data();
+			$http_status    = isset( $error_data['status'] ) ? (int) $error_data['status'] : 0;
+			$safe_transport = ! $http_status && self::is_safe_preconnect_failure( $response );
+
+			// Residual risk: a 500/502/503 after provider acceptance can still
+			// duplicate on retry. This is the accepted reliability tradeoff in
+			// the billing-risk-minimized policy; timeout-family outcomes never retry.
+			$should_retry = $safe_transport || in_array( $http_status, array( 429, 500, 502, 503, 529 ), true );
+			if ( ! $should_retry || $retry === $max_retries ) {
+				return $response;
+			}
+			++$retry;
+		}
+
+		return new WP_Error( 'api_error', __( 'The AI provider request failed.', 'abilities-bridge' ) );
+	}
+
+	/**
+	 * Normalize errors whose provider-side generation outcome is unknown.
+	 *
+	 * @param WP_Error $error Error.
+	 * @param string   $provider Provider key.
+	 * @return WP_Error
+	 */
+	private function normalize_generation_error( $error, $provider ) {
+		$data   = (array) $error->get_error_data();
+		$status = isset( $data['status'] ) ? (int) $data['status'] : 0;
+		$code   = $error->get_error_code();
+
+		if ( in_array( $code, array( 'ai_timeout_ambiguous', 'ai_generation_ambiguous' ), true ) ) {
+			return $error;
+		}
+
+		$is_transport_error = 'http_request_failed' === $code || false !== strpos( strtolower( $error->get_error_message() ), 'curl error' );
+		if ( in_array( $status, array( 408, 504, 524 ), true ) || ( 0 === $status && $is_transport_error && ! self::is_safe_preconnect_failure( $error ) ) ) {
+			return new WP_Error(
+				'ai_timeout_ambiguous',
+				__( 'The request timed out before the reply arrived. The AI may have finished the answer anyway (and billed it), so it was not retried automatically.', 'abilities-bridge' ),
+				array(
+					'status'   => $status,
+					'provider' => $provider,
+				)
+			);
+		}
+
+		return $error;
+	}
+
+	/**
+	 * Determine whether transport failed before a generation could be accepted.
+	 *
+	 * @param WP_Error $error Transport error.
+	 * @return bool
+	 */
+	private static function is_safe_preconnect_failure( $error ) {
+		$message = strtolower( $error->get_error_message() );
+		$markers = array(
+			'curl error 6',
+			'curl error 7',
+			'curl error 35',
+			'could not resolve',
+			'getaddrinfo failed',
+			'php_network_getaddresses',
+			'name or service not known',
+			'nodename nor servname provided',
+			'temporary failure in name resolution',
+			'failed to connect',
+			'connection refused',
+			'network is unreachable',
+			'no route to host',
+		);
+
+		foreach ( $markers as $marker ) {
+			if ( false !== strpos( $message, $marker ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Re-check the durable cancellation and ownership guard.
+	 *
+	 * @param int    $job_id Job ID.
+	 * @param string $lock Lock token.
+	 * @return true|WP_Error
+	 */
+	private function guard_worker( $job_id, $lock ) {
+		if ( Abilities_Bridge_Chat_Jobs::worker_may_continue( $job_id, $lock ) ) {
+			return true;
+		}
+
+		Abilities_Bridge_Chat_Jobs::mark_cancelled( $job_id, $lock );
+
+		return new WP_Error( 'job_cancelled', __( 'The chat job was stopped.', 'abilities-bridge' ) );
+	}
+
+	/**
+	 * Execute or finish the latest durable tool round.
+	 *
+	 * @param Abilities_Bridge_Conversation $conversation Conversation.
+	 * @param object                        $job Job.
+	 * @param string                        $lock Lock.
+	 * @param array                         $tool_usage Tool usage accumulator.
+	 * @param array                         $last_results Result accumulator.
+	 * @return true|WP_Error
+	 */
+	private function resume_checkpointed_tools( $conversation, $job, $lock, &$tool_usage, &$last_results ) {
+		$round = Abilities_Bridge_Chat_Job_Steps::latest_round( $job->id );
+		if ( $round <= 0 ) {
+			return new WP_Error( 'missing_tool_checkpoint', __( 'The saved tool checkpoint is missing.', 'abilities-bridge' ) );
+		}
+
+		$steps = Abilities_Bridge_Chat_Job_Steps::get_for_job( $job->id, $round );
+		foreach ( $steps as $step ) {
+			$input        = json_decode( $step->input_json, true );
+			$input        = is_array( $input ) ? $input : array();
+			$tool_usage[] = array(
+				'tool'  => $step->tool_name,
+				'input' => $input,
+			);
+
+			if ( 'completed' === $step->status ) {
+				continue;
+			}
+			if ( 'pending' !== $step->status ) {
+				return new WP_Error( 'tool_outcome_ambiguous', __( 'A previously started tool has no durable result and cannot be run again safely.', 'abilities-bridge' ) );
+			}
+
+			$guard = $this->guard_worker( $job->id, $lock );
+			if ( is_wp_error( $guard ) ) {
+				return $guard;
+			}
+
+			$tool_timeout = (int) apply_filters( 'abilities_bridge_tool_execution_timeout', 600, $step->tool_name );
+			if ( ! Abilities_Bridge_Chat_Jobs::set_phase( $job->id, $lock, 'tool_inflight', $tool_timeout + 90 ) ) {
+				return new WP_Error( 'job_cancelled', __( 'The chat job was stopped.', 'abilities-bridge' ) );
+			}
+			if ( ! Abilities_Bridge_Chat_Job_Steps::mark_running( $step->id, $job->id ) ) {
+				return new WP_Error( 'tool_checkpoint_failed', __( 'The tool checkpoint could not be claimed.', 'abilities-bridge' ) );
+			}
+			$guard = $this->guard_worker( $job->id, $lock );
+			if ( is_wp_error( $guard ) ) {
+				return $guard;
+			}
+
+			Abilities_Bridge_Chat_Jobs::touch_activity(
+				$job->id,
+				$lock,
+				sprintf(
+					/* translators: %s: provider tool or ability name. */
+					__( 'Calling ability: %s', 'abilities-bridge' ),
+					$step->tool_name
+				)
+			);
+			do_action( 'abilities_bridge_chat_job_checkpoint', 'before_tool', (int) $job->id, (int) $step->id );
+			$result = $this->execute_tool( $step->tool_name, $input, (bool) $job->plan_mode );
+			Abilities_Bridge_Logger::log_tool_execution( $step->tool_name, $input, $result, $job->conversation_id, 'admin' );
+			do_action( 'abilities_bridge_chat_job_checkpoint', 'tool_returned', (int) $job->id, (int) $step->id );
+
+			if ( ! Abilities_Bridge_Chat_Job_Steps::complete( $step->id, $job->id, $result ) ) {
+				return new WP_Error( 'tool_result_persistence_failed', __( 'A tool finished, but its result could not be checkpointed safely.', 'abilities-bridge' ) );
+			}
+
+			if ( ! Abilities_Bridge_Chat_Jobs::worker_may_continue( $job->id, $lock ) ) {
+				Abilities_Bridge_Chat_Jobs::mark_cancelled( $job->id, $lock );
+				return new WP_Error( 'job_cancelled', __( 'The chat job was stopped after the running step finished.', 'abilities-bridge' ) );
+			}
+			Abilities_Bridge_Chat_Jobs::set_phase( $job->id, $lock, 'tools_pending', 90 );
+		}
+
+		$results = Abilities_Bridge_Chat_Job_Steps::build_result_blocks( $job->id, $round );
+		if ( is_wp_error( $results ) ) {
+			return $results;
+		}
+		$last_results = $results;
+
+		if ( ! Abilities_Bridge_Chat_Jobs::acquire_conversation_lock( (int) $job->conversation_id, 2 ) ) {
+			return new WP_Error( 'tool_result_persistence_failed', __( 'The tool results could not be serialized with the conversation transcript.', 'abilities-bridge' ) );
+		}
+		try {
+			$guard = $this->guard_worker( $job->id, $lock );
+			if ( is_wp_error( $guard ) ) {
+				return $guard;
+			}
+			$message_id = Abilities_Bridge_Database::upsert_job_tool_result_message(
+				(int) $job->conversation_id,
+				(int) $job->id,
+				(int) $round,
+				$results
+			);
+			if ( is_wp_error( $message_id ) ) {
+				return new WP_Error(
+					'tool_result_persistence_failed',
+					__( 'The tool results were checkpointed, but they could not be added to the conversation safely.', 'abilities-bridge' )
+				);
+			}
+		} finally {
+			Abilities_Bridge_Chat_Jobs::release_conversation_lock( (int) $job->conversation_id );
+		}
+		$conversation->refresh_messages();
+
+		if ( ! Abilities_Bridge_Chat_Jobs::set_phase( $job->id, $lock, 'ready', 90 ) ) {
+			if ( Abilities_Bridge_Chat_Jobs::worker_may_continue( $job->id, $lock ) ) {
+				return new WP_Error( 'tool_result_persistence_failed', __( 'The tool results were saved, but the durable resume checkpoint could not be finalized.', 'abilities-bridge' ) );
+			}
+			return new WP_Error( 'job_cancelled', __( 'The chat job was stopped.', 'abilities-bridge' ) );
+		}
+		do_action( 'abilities_bridge_chat_job_checkpoint', 'tools_persisted', (int) $job->id, 0 );
+
+		return true;
+	}
+
+	/**
+	 * Execute tools for the legacy synchronous path.
+	 *
+	 * @param Abilities_Bridge_Conversation $conversation Conversation.
+	 * @param array                         $tool_uses Tool requests.
+	 * @param bool                          $plan_mode Whether write-like tools are blocked.
+	 * @param int                           $conversation_id Conversation ID.
+	 * @param array                         $tool_usage Tool usage accumulator.
+	 * @param array                         $last_results Result accumulator.
+	 * @return true|WP_Error
+	 */
+	private function execute_synchronous_tools( $conversation, $tool_uses, $plan_mode, $conversation_id, &$tool_usage, &$last_results ) {
+		$results = array();
+		foreach ( $tool_uses as $tool_use ) {
+			$name         = $tool_use['name'];
+			$input        = isset( $tool_use['input'] ) ? $tool_use['input'] : array();
+			$result       = $this->execute_tool( $name, $input, $plan_mode );
+			$tool_usage[] = array(
+				'tool'  => $name,
+				'input' => $input,
+			);
+			Abilities_Bridge_Logger::log_tool_execution( $name, $input, $result, $conversation_id, 'admin' );
+			$results[] = array(
+				'type'        => 'tool_result',
+				'tool_use_id' => $tool_use['id'],
+				'content'     => wp_json_encode( $result ),
+			);
+		}
+
+		$last_results = $results;
+		$message_id   = $conversation->add_user_message_array( $results );
+
+		return is_wp_error( $message_id ) ? $message_id : true;
 	}
 
 	/**
@@ -456,9 +763,20 @@ class Abilities_Bridge_Message_Processor {
 	private function execute_tool( $tool_name, $input, $plan_mode = false ) {
 		// Check if this is an ability execution request.
 		if ( strpos( $tool_name, 'ability_' ) === 0 ) {
-			// Extract ability name and convert underscores back to slashes.
-			$ability_name = substr( $tool_name, 8 ); // Remove 'ability_' prefix.
-			$ability_name = str_replace( '_', '/', $ability_name ); // Convert back to original format.
+			$ability_name = Abilities_Bridge_Chat_Job_Steps::resolve_ability_name( $tool_name );
+			if ( null === $ability_name ) {
+				return array(
+					'success' => false,
+					'error'   => 'The requested WordPress ability is not enabled or could not be resolved.',
+				);
+			}
+			if ( $plan_mode && ! Abilities_Bridge_Chat_Job_Steps::is_readonly_tool( $tool_name ) ) {
+				return array(
+					'success'   => false,
+					'error'     => 'Write-capable WordPress abilities are disabled in Plan Mode.',
+					'plan_mode' => true,
+				);
+			}
 
 			// Validate input.
 			if ( is_object( $input ) ) {
@@ -613,6 +931,11 @@ class Abilities_Bridge_Message_Processor {
 		}
 
 		$friendly_messages = array(
+			'ai_timeout_ambiguous'       => 'The request timed out before the reply arrived. The AI may have finished it anyway (and billed it), so it was not retried automatically.',
+			'ai_generation_ambiguous'    => 'The AI response could not be saved or read safely. It may already have been billed, so it was not retried automatically.',
+			'ai_refusal'                 => 'The AI model declined this request through its safety system. Rewording the request usually resolves this.',
+			'job_cancelled'              => 'The chat job was stopped.',
+			'message_persistence_failed' => 'The message could not be saved. Please try again.',
 			'json_parse_error'           => 'Unable to connect to AI service. Please try again.',
 			'invalid_response_structure' => 'Received unexpected response. Please try again.',
 			'no_api_key'                 => 'API key not configured. Please check Settings.',
@@ -628,6 +951,10 @@ class Abilities_Bridge_Message_Processor {
 			'permission_error'           => 'OpenAI API key does not have permission for the selected model.',
 			'requests'                   => 'Rate limit reached. Please wait before sending another message.',
 		);
+
+		if ( isset( $friendly_messages[ $error_code ] ) && in_array( $error_code, array( 'ai_timeout_ambiguous', 'ai_generation_ambiguous' ), true ) ) {
+			return $friendly_messages[ $error_code ];
+		}
 
 		if ( isset( $error_data['status'] ) ) {
 			$status = $error_data['status'];

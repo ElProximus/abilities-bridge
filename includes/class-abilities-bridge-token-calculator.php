@@ -25,6 +25,7 @@ class Abilities_Bridge_Token_Calculator {
 	 * @param array       $messages Conversation messages.
 	 * @param array       $tools Tool definitions.
 	 * @param string|null $model Model identifier (uses current setting if not specified).
+	 * @param string|null $provider Provider key.
 	 * @return array Token usage statistics
 	 */
 	public static function calculate_token_usage( $messages, $tools = array(), $model = null, $provider = null ) {
@@ -83,7 +84,8 @@ class Abilities_Bridge_Token_Calculator {
 	 * Estimate token count for text
 	 * More accurate estimation using character and word counts
 	 *
-	 * @param string $text Text to estimate.
+	 * @param string      $text Text to estimate.
+	 * @param string|null $provider Provider key.
 	 * @return int Estimated token count
 	 */
 	public static function estimate_tokens( $text, $provider = null ) {
@@ -139,7 +141,8 @@ class Abilities_Bridge_Token_Calculator {
 	/**
 	 * Get model limits for specified model
 	 *
-	 * @param string $model Model identifier.
+	 * @param string      $model Model identifier.
+	 * @param string|null $provider Provider key.
 	 * @return array Model limits (input, output, name)
 	 */
 	public static function get_model_limits( $model, $provider = null ) {
@@ -147,7 +150,7 @@ class Abilities_Bridge_Token_Calculator {
 
 		if ( Abilities_Bridge_AI_Provider::PROVIDER_OPENAI === $provider ) {
 			$model_configs = array(
-				'gpt-5.5' => array(
+				'gpt-5.5'             => array(
 					'input_limit'  => 1050000,
 					'output_limit' => 128000,
 					'name'         => 'GPT-5.5',
@@ -157,7 +160,7 @@ class Abilities_Bridge_Token_Calculator {
 					'output_limit' => 128000,
 					'name'         => 'GPT-5.5',
 				),
-				'gpt-5.4' => array(
+				'gpt-5.4'             => array(
 					'input_limit'  => 1050000,
 					'output_limit' => 128000,
 					'name'         => 'GPT-5.4',
@@ -185,6 +188,21 @@ class Abilities_Bridge_Token_Calculator {
 		} else {
 			// Model configurations for Claude models.
 			$model_configs = array(
+				'claude-opus-5'             => array(
+					'input_limit'  => 1000000,
+					'output_limit' => 128000,
+					'name'         => 'Claude Opus 5',
+				),
+				'claude-fable-5'            => array(
+					'input_limit'  => 1000000,
+					'output_limit' => 128000,
+					'name'         => 'Claude Fable 5',
+				),
+				'claude-sonnet-5'           => array(
+					'input_limit'  => 1000000,
+					'output_limit' => 128000,
+					'name'         => 'Claude Sonnet 5',
+				),
 				'claude-opus-4-8'           => array(
 					'input_limit'  => 200000,
 					'output_limit' => 128000,

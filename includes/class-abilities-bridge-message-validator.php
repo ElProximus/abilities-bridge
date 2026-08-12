@@ -99,6 +99,7 @@ class Abilities_Bridge_Message_Validator {
 						$pending_tool_uses[] = array(
 							'tool_use_id' => $block['id'],
 							'tool_name'   => $block['name'],
+							'job_id'      => isset( $message['job_id'] ) ? (int) $message['job_id'] : 0,
 						);
 					}
 				}
@@ -126,7 +127,25 @@ class Abilities_Bridge_Message_Validator {
 			}
 		}
 
-		// If we have unmatched tool_use blocks, add error results for them.
+		// Durable jobs intentionally persist tool_use before their result. Do not
+		// let the legacy corruption repair fabricate a result while that job can
+		// still resume from its step ledger.
+		$pending_tool_uses = array_values(
+			array_filter(
+				$pending_tool_uses,
+				function ( $pending ) {
+					if ( empty( $pending['job_id'] ) || ! class_exists( 'Abilities_Bridge_Chat_Jobs' ) ) {
+						return true;
+					}
+
+					$job = Abilities_Bridge_Chat_Jobs::get( (int) $pending['job_id'] );
+
+					return ! $job || ! in_array( $job->status, array( 'preparing', 'queued', 'dispatching', 'running' ), true );
+				}
+			)
+		);
+
+		// If we have unmatched legacy tool_use blocks, add error results for them.
 		if ( ! empty( $pending_tool_uses ) ) {
 			$tool_results = array();
 

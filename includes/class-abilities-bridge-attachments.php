@@ -96,7 +96,10 @@ class Abilities_Bridge_Attachments {
 		}
 
 		if ( is_string( $raw ) ) {
-			$decoded = json_decode( wp_unslash( $raw ), true );
+			// Browser handlers remove WordPress request slashes exactly once before
+			// calling this parser. A second unslash corrupts JSON escape sequences
+			// in filenames containing quotes or literal backslashes.
+			$decoded = json_decode( $raw, true );
 			if ( json_last_error() !== JSON_ERROR_NONE ) {
 				return new WP_Error( 'invalid_attachments', __( 'Image attachment data is invalid.', 'abilities-bridge' ) );
 			}
@@ -222,6 +225,7 @@ class Abilities_Bridge_Attachments {
 
 			$written = file_put_contents( $absolute_path, $attachment['binary'] ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
 			if ( false === $written ) {
+				self::delete_attachment_blocks( $conversation_id, $blocks );
 				return new WP_Error( 'attachment_write_failed', __( 'Unable to save one of the image attachments.', 'abilities-bridge' ) );
 			}
 
@@ -240,6 +244,44 @@ class Abilities_Bridge_Attachments {
 		}
 
 		return $blocks;
+	}
+
+	/**
+	 * Delete only the attachment files represented by the supplied blocks.
+	 *
+	 * Used by enqueue rollback so other turns in the same conversation are
+	 * never removed with a failed request.
+	 *
+	 * @param int   $conversation_id Conversation ID.
+	 * @param array $blocks Stored attachment blocks.
+	 * @return bool True when every requested file was removed.
+	 */
+	public static function delete_attachment_blocks( $conversation_id, $blocks ) {
+		$success = true;
+
+		foreach ( (array) $blocks as $block ) {
+			if ( ! is_array( $block ) || ( isset( $block['type'] ) && 'image' !== $block['type'] ) ) {
+				continue;
+			}
+
+			$path = self::absolute_path_from_block( (int) $conversation_id, $block );
+			if ( '' === $path ) {
+				$success = false;
+				continue;
+			}
+
+			$success = self::delete_file_entry( $path ) && $success;
+		}
+
+		$conversation_dir = self::conversation_dir( $conversation_id );
+		if ( file_exists( $conversation_dir ) && is_dir( $conversation_dir ) ) {
+			$entries = self::list_directory_entries( $conversation_dir );
+			if ( is_array( $entries ) && empty( $entries ) ) {
+				$success = self::delete_empty_directory( $conversation_dir ) && $success;
+			}
+		}
+
+		return $success;
 	}
 
 	/**
@@ -314,8 +356,8 @@ class Abilities_Bridge_Attachments {
 			++$hydrated_image_seen;
 
 			$image_block = array(
-				'type'          => 'image',
-				'source'        => array(
+				'type'   => 'image',
+				'source' => array(
 					'type'       => 'base64',
 					'media_type' => $image_data['mime_type'],
 					'data'       => $image_data['base64'],

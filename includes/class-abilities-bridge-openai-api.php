@@ -132,6 +132,10 @@ class Abilities_Bridge_OpenAI_API {
 			'model' => $model,
 			'input' => $this->convert_messages_to_responses_input( $messages, ! empty( $this->previous_response_id ) ),
 		);
+		if ( apply_filters( 'abilities_bridge_openai_background_mode', false ) ) {
+			$body['background'] = true;
+			$body['store']      = true;
+		}
 
 		if ( ! empty( $this->previous_response_id ) ) {
 			$body['previous_response_id'] = $this->previous_response_id;
@@ -174,7 +178,7 @@ class Abilities_Bridge_OpenAI_API {
 			$data          = $request['data'];
 		}
 
-		if ( 200 !== $response_code ) {
+		if ( $response_code < 200 || $response_code >= 300 ) {
 			$error_message = isset( $data['error']['message'] ) ? $data['error']['message'] : 'Unknown API error';
 			$error_type    = isset( $data['error']['code'] ) ? $data['error']['code'] : ( isset( $data['error']['type'] ) ? $data['error']['type'] : 'api_error' );
 
@@ -191,13 +195,54 @@ class Abilities_Bridge_OpenAI_API {
 			);
 		}
 
+		if ( ! empty( $body['background'] ) && ! empty( $data['id'] ) ) {
+			do_action( 'abilities_bridge_openai_response_submitted', sanitize_text_field( $data['id'] ) );
+			if ( in_array( $data['status'] ?? '', array( 'queued', 'in_progress' ), true ) ) {
+				$request = $this->poll_background_response( $data['id'] );
+				if ( is_wp_error( $request ) ) {
+					return $request;
+				}
+				$response_code = $request['response_code'];
+				$response_body = $request['response_body'];
+				$data          = $request['data'];
+			}
+		}
+
+		return $this->parse_response_data( $data, $response_body, $response_code );
+	}
+
+	/**
+	 * Convert a completed Responses payload into the plugin's provider-neutral shape.
+	 *
+	 * @param array  $data Parsed payload.
+	 * @param string $response_body Raw body for diagnostics.
+	 * @param int    $response_code HTTP status.
+	 * @return array|WP_Error
+	 */
+	public function parse_response_data( $data, $response_body = '', $response_code = 200 ) {
+		if ( isset( $data['status'] ) && in_array( $data['status'], array( 'failed', 'cancelled', 'incomplete' ), true ) ) {
+			$message = isset( $data['error']['message'] ) ? $data['error']['message'] : __( 'The OpenAI background response did not complete.', 'abilities-bridge' );
+			return new WP_Error(
+				'openai_background_failed',
+				$message,
+				array(
+					'status'           => $response_code,
+					'provider'         => 'openai',
+					'provider_status'  => $data['status'],
+					'provider_message' => $message,
+				)
+			);
+		}
+
 		if ( ! isset( $data['output'] ) || ! is_array( $data['output'] ) ) {
 			return new WP_Error(
-				'invalid_response_structure',
-				'Invalid API response structure',
+				'ai_generation_ambiguous',
+				__( 'The AI returned an unreadable successful response. It may already have been billed, so it was not retried automatically.', 'abilities-bridge' ),
 				array(
+					'status'           => $response_code,
+					'provider'         => 'openai',
 					'response_preview' => substr( $response_body, 0, 200 ),
-					'retryable'        => true,
+					'retryable'        => false,
 				)
 			);
 		}
@@ -250,6 +295,107 @@ class Abilities_Bridge_OpenAI_API {
 	}
 
 	/**
+	 * Fetch a stored OpenAI response. GET retries are billing-safe.
+	 *
+	 * @param string $response_id OpenAI response ID.
+	 * @return array|WP_Error Parsed transport envelope.
+	 */
+	public function fetch_background_response( $response_id ) {
+		$response_id = sanitize_text_field( $response_id );
+		if ( '' === $response_id ) {
+			return new WP_Error( 'missing_response_id', __( 'The OpenAI response ID is missing.', 'abilities-bridge' ) );
+		}
+
+		for ( $attempt = 0; $attempt < 4; ++$attempt ) {
+			if ( $attempt > 0 ) {
+				sleep( (int) pow( 2, $attempt - 1 ) );
+			}
+
+			$response = wp_remote_get(
+				trailingslashit( $this->api_url ) . rawurlencode( $response_id ),
+				array(
+					'timeout' => 30,
+					'headers' => array( 'Authorization' => 'Bearer ' . $this->api_key ),
+				)
+			);
+			if ( is_wp_error( $response ) ) {
+				if ( 3 === $attempt ) {
+					return $response;
+				}
+				continue;
+			}
+
+			$code = (int) wp_remote_retrieve_response_code( $response );
+			$body = wp_remote_retrieve_body( $response );
+			$data = json_decode( $body, true );
+			if ( $code >= 200 && $code < 300 ) {
+				if ( JSON_ERROR_NONE !== json_last_error() || ! is_array( $data ) ) {
+					if ( 3 === $attempt ) {
+						return new WP_Error( 'openai_fetch_parse_error', __( 'OpenAI returned an unreadable stored response.', 'abilities-bridge' ) );
+					}
+					continue;
+				}
+				return array(
+					'response_code' => $code,
+					'response_body' => $body,
+					'data'          => $data,
+				);
+			}
+
+			if ( ! in_array( $code, array( 429, 500, 502, 503, 504, 529 ), true ) || 3 === $attempt ) {
+				$message = is_array( $data ) && isset( $data['error']['message'] ) ? $data['error']['message'] : __( 'Unable to fetch the stored OpenAI response.', 'abilities-bridge' );
+				return new WP_Error(
+					'openai_fetch_failed',
+					$message,
+					array(
+						'status'   => $code,
+						'provider' => 'openai',
+					)
+				);
+			}
+		}
+
+		return new WP_Error( 'openai_fetch_failed', __( 'Unable to fetch the stored OpenAI response.', 'abilities-bridge' ) );
+	}
+
+	/**
+	 * Poll a submitted background response without creating a new generation.
+	 *
+	 * @param string $response_id OpenAI response ID.
+	 * @return array|WP_Error
+	 */
+	private function poll_background_response( $response_id ) {
+		$interval  = max( 1, (int) apply_filters( 'abilities_bridge_openai_poll_interval', 30 ) );
+		$max_polls = max( 1, (int) apply_filters( 'abilities_bridge_openai_max_polls', 40 ) );
+
+		for ( $poll = 0; $poll < $max_polls; ++$poll ) {
+			if ( ! apply_filters( 'abilities_bridge_openai_continue_polling', true, $response_id ) ) {
+				return new WP_Error( 'job_cancelled', __( 'The chat job was stopped.', 'abilities-bridge' ) );
+			}
+			sleep( $interval );
+			do_action( 'abilities_bridge_openai_poll_tick', $response_id );
+			$request = $this->fetch_background_response( $response_id );
+			if ( is_wp_error( $request ) ) {
+				return $request;
+			}
+
+			$status = $request['data']['status'] ?? '';
+			if ( ! in_array( $status, array( 'queued', 'in_progress' ), true ) ) {
+				return $request;
+			}
+		}
+
+		return new WP_Error(
+			'openai_poll_timeout',
+			__( 'OpenAI is still processing the stored response. It was not submitted again.', 'abilities-bridge' ),
+			array(
+				'provider'    => 'openai',
+				'response_id' => $response_id,
+			)
+		);
+	}
+
+	/**
 	 * Perform an OpenAI Responses API request and parse the JSON payload.
 	 *
 	 * @param array $body Request body.
@@ -259,7 +405,7 @@ class Abilities_Bridge_OpenAI_API {
 		$response = wp_remote_post(
 			$this->api_url,
 			array(
-				'timeout' => 300,
+				'timeout' => (int) apply_filters( 'abilities_bridge_ai_request_timeout', 120 ),
 				'headers' => array(
 					'Content-Type'  => 'application/json',
 					'Authorization' => 'Bearer ' . $this->api_key,
@@ -276,14 +422,27 @@ class Abilities_Bridge_OpenAI_API {
 		$response_body = wp_remote_retrieve_body( $response );
 		$data          = json_decode( $response_body, true );
 
+		// Classify the HTTP status before validating JSON. Gateway error
+		// responses are commonly empty or HTML, and a parse error must not
+		// hide the status used by the billing-safety retry policy.
+		if ( $response_code < 200 || $response_code >= 300 ) {
+			return array(
+				'response_code' => $response_code,
+				'response_body' => $response_body,
+				'data'          => is_array( $data ) ? $data : array(),
+			);
+		}
+
 		if ( json_last_error() !== JSON_ERROR_NONE ) {
 			return new WP_Error(
-				'json_parse_error',
-				'Invalid API response format',
+				'ai_generation_ambiguous',
+				__( 'The AI returned an unreadable successful response. It may already have been billed, so it was not retried automatically.', 'abilities-bridge' ),
 				array(
+					'status'           => $response_code,
+					'provider'         => 'openai',
 					'json_error'       => json_last_error_msg(),
 					'response_preview' => substr( $response_body, 0, 200 ),
-					'retryable'        => true,
+					'retryable'        => false,
 				)
 			);
 		}
@@ -314,7 +473,11 @@ class Abilities_Bridge_OpenAI_API {
 			$error_text .= ' ' . strtolower( $data['error']['code'] );
 		}
 
-		return false !== strpos( $error_text, 'previous_response_id' ) || false !== strpos( $error_text, 'previous response' );
+		return false !== strpos( $error_text, 'previous_response_id' )
+			|| false !== strpos( $error_text, 'previous response' )
+			|| false !== strpos( $error_text, 'no tool output found' )
+			|| false !== strpos( $error_text, 'missing tool output' )
+			|| false !== strpos( $error_text, 'function_call_output' );
 	}
 
 	/**
@@ -344,7 +507,7 @@ class Abilities_Bridge_OpenAI_API {
 
 					foreach ( $content as $block ) {
 						if ( isset( $block['type'] ) && 'tool_result' === $block['type'] ) {
-							$input_items = $this->flush_user_content_items( $input_items, $user_content_items );
+							$input_items   = $this->flush_user_content_items( $input_items, $user_content_items );
 							$input_items[] = array(
 								'type'    => 'function_call_output',
 								'call_id' => isset( $block['tool_use_id'] ) ? $block['tool_use_id'] : '',
@@ -422,7 +585,7 @@ class Abilities_Bridge_OpenAI_API {
 				'role'    => 'assistant',
 				'content' => implode( "\n\n", $text_chunks ),
 			);
-			$text_chunks = array();
+			$text_chunks   = array();
 		}
 
 		return $input_items;

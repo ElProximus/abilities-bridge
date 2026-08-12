@@ -102,7 +102,7 @@ class Abilities_Bridge_Conversation {
 		}
 
 		// Not in cache, load from database.
-		$db_messages = Abilities_Bridge_Database::get_messages( $this->conversation_id );
+		$db_messages = Abilities_Bridge_Database::get_messages( $this->conversation_id, true );
 
 		foreach ( $db_messages as $msg ) {
 			$content = json_decode( $msg->content, true );
@@ -112,15 +112,21 @@ class Abilities_Bridge_Conversation {
 				// Fix empty arrays that should be empty objects (for tool inputs).
 				$content = Abilities_Bridge_Message_Validator::fix_empty_tool_inputs( $content );
 
-				$this->messages[] = array(
-					'role'    => $msg->role,
-					'content' => $content,
-				);
+					$this->messages[] = array(
+						'id'        => (int) $msg->id,
+						'job_id'    => isset( $msg->job_id ) ? (int) $msg->job_id : 0,
+						'job_round' => isset( $msg->job_round ) ? (int) $msg->job_round : 0,
+						'role'      => $msg->role,
+						'content'   => $content,
+					);
 			} else {
-				$this->messages[] = array(
-					'role'    => $msg->role,
-					'content' => $msg->content,
-				);
+					$this->messages[] = array(
+						'id'        => (int) $msg->id,
+						'job_id'    => isset( $msg->job_id ) ? (int) $msg->job_id : 0,
+						'job_round' => isset( $msg->job_round ) ? (int) $msg->job_round : 0,
+						'role'      => $msg->role,
+						'content'   => $msg->content,
+					);
 			}
 		}
 
@@ -135,41 +141,23 @@ class Abilities_Bridge_Conversation {
 	 * Add a user message.
 	 *
 	 * @param string|array $content Message content.
+	 * @param int          $job_id Job that owns this turn, or zero for legacy synchronous messages.
+	 * @return int|WP_Error Message ID or error.
 	 */
-	public function add_user_message( $content ) {
-		$this->messages[] = array(
-			'role'    => 'user',
-			'content' => $content,
-		);
-
-		if ( $this->conversation_id ) {
-			$content_json = is_array( $content ) ? wp_json_encode( $content ) : $content;
-			Abilities_Bridge_Database::add_message( $this->conversation_id, 'user', $content_json );
-			// Invalidate cache when adding new message.
-			$this->invalidate_cache();
-		}
+	public function add_user_message( $content, $job_id = 0 ) {
+		return $this->add_message( 'user', $content, $job_id );
 	}
 
 	/**
 	 * Add a user message with array content (for tool results)
 	 *
 	 * @param array $content Message content array.
+	 * @param int   $job_id Job that owns this turn.
+	 * @param int   $job_round Provider round within the job.
+	 * @return int|WP_Error Message ID or error.
 	 */
-	public function add_user_message_array( $content ) {
-		$this->messages[] = array(
-			'role'    => 'user',
-			'content' => $content,
-		);
-
-		if ( $this->conversation_id ) {
-			Abilities_Bridge_Database::add_message(
-				$this->conversation_id,
-				'user',
-				wp_json_encode( $content )
-			);
-			// Invalidate cache when adding new message.
-			$this->invalidate_cache();
-		}
+	public function add_user_message_array( $content, $job_id = 0, $job_round = 0 ) {
+		return $this->add_message( 'user', $content, $job_id, $job_round );
 	}
 
 	/**
@@ -183,22 +171,66 @@ class Abilities_Bridge_Conversation {
 	}
 
 	/**
+	 * Reload the provider-visible transcript after an external durable upsert.
+	 *
+	 * @return void
+	 */
+	public function refresh_messages() {
+		$this->messages = array();
+		$this->invalidate_cache();
+		$this->load_messages();
+	}
+
+	/**
 	 * Add an assistant message
 	 *
 	 * @param array|string $content Message content (can be array for tool use).
+	 * @param int          $job_id Job that owns this turn.
+	 * @param int          $job_round Provider round within the job.
+	 * @return int|WP_Error Message ID or error.
 	 */
-	public function add_assistant_message( $content ) {
-		$this->messages[] = array(
-			'role'    => 'assistant',
-			'content' => $content,
+	public function add_assistant_message( $content, $job_id = 0, $job_round = 0 ) {
+		return $this->add_message( 'assistant', $content, $job_id, $job_round );
+	}
+
+	/**
+	 * Persist a checked message before adding it to the in-memory transcript.
+	 *
+	 * @param string       $role    Message role.
+	 * @param string|array $content Message content.
+	 * @param int          $job_id  Owning job.
+	 * @param int          $job_round Provider round within the job.
+	 * @return int|WP_Error Message ID or error.
+	 */
+	private function add_message( $role, $content, $job_id, $job_round = 0 ) {
+		if ( ! $this->conversation_id ) {
+			return new WP_Error( 'conversation_not_ready', __( 'The conversation has not been created yet.', 'abilities-bridge' ) );
+		}
+
+		$content_json = is_array( $content ) ? wp_json_encode( $content ) : (string) $content;
+		$message_id   = Abilities_Bridge_Database::add_message(
+			$this->conversation_id,
+			$role,
+			$content_json,
+			(int) $job_id,
+			true,
+			(int) $job_round
 		);
 
-		if ( $this->conversation_id ) {
-			$content_json = is_array( $content ) ? wp_json_encode( $content ) : $content;
-			Abilities_Bridge_Database::add_message( $this->conversation_id, 'assistant', $content_json );
-			// Invalidate cache when adding new message.
-			$this->invalidate_cache();
+		if ( ! $message_id ) {
+			return new WP_Error( 'message_persistence_failed', __( 'Unable to save the conversation checkpoint.', 'abilities-bridge' ) );
 		}
+
+		$this->messages[] = array(
+			'id'        => (int) $message_id,
+			'job_id'    => (int) $job_id,
+			'job_round' => (int) $job_round,
+			'role'      => $role,
+			'content'   => $content,
+		);
+		$this->invalidate_cache();
+
+		return (int) $message_id;
 	}
 
 	/**
@@ -221,6 +253,7 @@ class Abilities_Bridge_Conversation {
 			$args,
 			array(
 				'hydrate_image_message_index' => null,
+				'hydrate_image_message_id'    => null,
 			)
 		);
 
@@ -233,7 +266,11 @@ class Abilities_Bridge_Conversation {
 				$content = Abilities_Bridge_Attachments::prepare_content_for_api(
 					$content,
 					$this->conversation_id,
-					null !== $args['hydrate_image_message_index'] && (int) $index === (int) $args['hydrate_image_message_index']
+					(
+							null !== $args['hydrate_image_message_index'] && (int) $index === (int) $args['hydrate_image_message_index']
+						) || (
+							null !== $args['hydrate_image_message_id'] && isset( $message['id'] ) && (int) $message['id'] === (int) $args['hydrate_image_message_id']
+						)
 				);
 			}
 
@@ -262,7 +299,7 @@ class Abilities_Bridge_Conversation {
 	 * @return array Token usage statistics
 	 */
 	public function calculate_token_usage() {
-		$tools = Abilities_Bridge_AI_Provider::get_tool_definitions();
+		$tools    = Abilities_Bridge_AI_Provider::get_tool_definitions();
 		$provider = Abilities_Bridge_AI_Provider::get_current_provider();
 
 		// Get model from conversation or use current setting.

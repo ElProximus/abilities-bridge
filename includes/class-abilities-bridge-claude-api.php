@@ -46,11 +46,14 @@ class Abilities_Bridge_Claude_API {
 	 */
 	public static function get_available_models() {
 		return array(
-			'claude-opus-4-8'           => 'Opus 4.8 (Most Intelligent)',
-			'claude-opus-4-7'           => 'Opus 4.7',
-			'claude-opus-4-6'           => 'Opus 4.6',
-			'claude-sonnet-4-6'         => 'Sonnet 4.6 (Balanced)',
-			'claude-haiku-4-5-20251001' => 'Haiku 4.5 (Fastest & Cheapest)',
+			'claude-opus-5'             => 'Opus 5 (Recommended)',
+			'claude-fable-5'            => 'Fable 5 (Maximum Capability — premium pricing, slower)',
+			'claude-sonnet-5'           => 'Sonnet 5 (Fast & Economical)',
+			'claude-opus-4-8'           => 'Opus 4.8 (Legacy)',
+			'claude-opus-4-7'           => 'Opus 4.7 (Legacy)',
+			'claude-opus-4-6'           => 'Opus 4.6 (Legacy)',
+			'claude-sonnet-4-6'         => 'Sonnet 4.6 (Legacy)',
+			'claude-haiku-4-5-20251001' => 'Haiku 4.5 (Legacy — fastest)',
 		);
 	}
 
@@ -60,7 +63,7 @@ class Abilities_Bridge_Claude_API {
 	 * @return string
 	 */
 	public static function get_default_model() {
-		return 'claude-sonnet-4-6';
+		return 'claude-opus-5';
 	}
 
 	/**
@@ -72,7 +75,7 @@ class Abilities_Bridge_Claude_API {
 		$user_id = get_current_user_id();
 		$model   = get_user_meta( $user_id, 'abilities_bridge_selected_model', true );
 
-		// Default to Sonnet 4.6 if no preference set (latest balanced model).
+		// Use the current recommended model when no preference is stored.
 		if ( empty( $model ) ) {
 			$model = self::get_default_model();
 		}
@@ -182,6 +185,12 @@ Important: Abilities are managed by the site administrator. If an ability you ne
 			$model = self::get_selected_model();
 		}
 
+		// Claude 5 models think by default and thinking counts against
+		// max_tokens, so the older 4096 budget can truncate visible output.
+		if ( in_array( $model, array( 'claude-opus-5', 'claude-sonnet-5', 'claude-fable-5' ), true ) && $max_tokens <= 4096 ) {
+			$max_tokens = 16000;
+		}
+
 		$body = array(
 			'model'      => $model,
 			'max_tokens' => $max_tokens,
@@ -215,12 +224,12 @@ Important: Abilities are managed by the site administrator. If an ability you ne
 		$response = wp_remote_post(
 			$this->api_url,
 			array(
-				'timeout' => 300, // Increased to 5 minutes.
+				'timeout' => (int) apply_filters( 'abilities_bridge_ai_request_timeout', 120 ),
 				'headers' => array(
 					'Content-Type'      => 'application/json',
 					'x-api-key'         => $this->api_key,
 					'anthropic-version' => '2023-06-01',
-					'anthropic-beta'    => 'prompt-caching-2024-07-31,context-management-2025-06-27',
+					'anthropic-beta'    => 'context-management-2025-06-27',
 				),
 				'body'    => wp_json_encode( $body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ),
 			)
@@ -256,12 +265,14 @@ Important: Abilities are managed by the site administrator. If an ability you ne
 		// Validate JSON parse.
 		if ( json_last_error() !== JSON_ERROR_NONE ) {
 			return new WP_Error(
-				'json_parse_error',
-				'Invalid API response format',
+				'ai_generation_ambiguous',
+				__( 'The AI returned an unreadable successful response. It may already have been billed, so it was not retried automatically.', 'abilities-bridge' ),
 				array(
+					'status'           => $response_code,
+					'provider'         => 'anthropic',
 					'json_error'       => json_last_error_msg(),
 					'response_preview' => substr( $response_body, 0, 200 ),
-					'retryable'        => true,
+					'retryable'        => false,
 				)
 			);
 		}
@@ -269,12 +280,31 @@ Important: Abilities are managed by the site administrator. If an ability you ne
 		// Validate response structure.
 		if ( ! is_array( $data ) || ! isset( $data['content'] ) ) {
 			return new WP_Error(
-				'invalid_response_structure',
-				'Invalid API response structure',
+				'ai_generation_ambiguous',
+				__( 'The AI returned an unreadable successful response. It may already have been billed, so it was not retried automatically.', 'abilities-bridge' ),
 				array(
+					'status'           => $response_code,
+					'provider'         => 'anthropic',
 					'response_preview' => substr( $response_body, 0, 200 ),
-					'retryable'        => true,
+					'retryable'        => false,
 				)
+			);
+		}
+
+		// A definitive Fable refusal may be followed by one Opus generation,
+		// but the processor owns that decision so a durable worker can re-check
+		// cancellation and renew its lease before the second billable request.
+		if ( isset( $data['stop_reason'] ) && 'refusal' === $data['stop_reason'] ) {
+			$fallback_enabled = apply_filters( 'abilities_bridge_fable_fallback_enabled', true );
+			$error_data       = array( 'model' => $model );
+			if ( 'claude-fable-5' === $model && $fallback_enabled ) {
+				$error_data['fallback_model'] = 'claude-opus-5';
+			}
+
+			return new WP_Error(
+				'ai_refusal',
+				'The AI model declined this request via its safety system. Rewording the request usually resolves this.',
+				$error_data
 			);
 		}
 
