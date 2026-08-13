@@ -362,23 +362,16 @@ class Abilities_Bridge_Chat_Job_Steps {
 	 * @return string|null WordPress ability name.
 	 */
 	public static function resolve_ability_name( $tool_name ) {
-		if ( 0 !== strpos( $tool_name, 'ability_' ) || ! class_exists( 'Abilities_Bridge_Ability_Permissions' ) ) {
+		if ( 0 !== strpos( (string) $tool_name, 'ability_' ) || ! class_exists( 'Abilities_Bridge_Ability_Permissions' ) ) {
 			return null;
 		}
 
-		$enabled_abilities = Abilities_Bridge_Ability_Permissions::get_all_permissions( true );
-		foreach ( $enabled_abilities as $ability_config ) {
-			if ( empty( $ability_config['ability_name'] ) ) {
-				continue;
-			}
+		// Exact lookup against the SAME canonical map used when the tool
+		// list was created. The old code re-derived names with a different
+		// (broader) transform, so any hyphenated ability advertised a name
+		// this resolver could never match.
+		$map = Abilities_Bridge_Ability_Permissions::provider_tool_map();
 
-			$ability_name = $ability_config['ability_name'];
-			$api_name     = 'ability_' . preg_replace( '/[^A-Za-z0-9_]/', '_', $ability_name );
-			if ( $api_name === $tool_name ) {
-				return $ability_name;
-			}
-		}
-
-		return null;
+		return isset( $map[ $tool_name ] ) ? $map[ $tool_name ] : null;
 	}
 }

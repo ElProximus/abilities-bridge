@@ -516,6 +516,11 @@ Important: Abilities are managed by the site administrator. If an ability you ne
 		if ( $abilities_api_enabled && class_exists( 'Abilities_Bridge_Ability_Permissions' ) && function_exists( 'wp_get_ability' ) ) {
 			$enabled_abilities = Abilities_Bridge_Ability_Permissions::get_all_permissions( true ); // Get enabled only.
 
+			// One shared canonical map drives BOTH tool creation here and
+			// tool-call resolution in Abilities_Bridge_Chat_Job_Steps -
+			// collision-excluded abilities are advertised nowhere.
+			$provider_tool_map = Abilities_Bridge_Ability_Permissions::provider_tool_map();
+
 			foreach ( $enabled_abilities as $ability_config ) {
 				$ability_name = $ability_config['ability_name'];
 
@@ -550,9 +555,14 @@ Important: Abilities are managed by the site administrator. If an ability you ne
 						$ability_config['min_capability'] ? $ability_config['min_capability'] : 'any user'
 					);
 
-					// Add ability to tool list with ability_ prefix (convert / to _ for API compliance).
-					// Tool names must match: ^[a-zA-Z0-9_-]{1,128}$.
-					$tool_name = 'ability_' . str_replace( '/', '_', $ability_name );
+					// Canonical provider tool name (^[a-zA-Z0-9_-]{1,128}$) -
+					// the SAME transform the resolver uses, so a dashed
+					// ability like core/get-site-info round-trips exactly.
+					$tool_name = Abilities_Bridge_Ability_Permissions::provider_tool_name( $ability_name );
+
+					if ( ! isset( $provider_tool_map[ $tool_name ] ) || $provider_tool_map[ $tool_name ] !== $ability_name ) {
+						continue;
+					}
 
 					$tools[] = array(
 						'name'         => $tool_name,

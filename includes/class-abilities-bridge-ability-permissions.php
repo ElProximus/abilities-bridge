@@ -821,4 +821,91 @@ class Abilities_Bridge_Ability_Permissions {
 			)
 		);
 	}
+
+	/**
+	 * Canonical provider tool name for a WordPress Ability.
+	 *
+	 * BOTH tool-list creation and tool-call resolution must use this one
+	 * transform. The historical bug: creation converted only "/" while
+	 * resolution converted every non-[A-Za-z0-9_] character, so any
+	 * hyphenated ability (core/get-site-info) advertised a tool name the
+	 * resolver could never match. Hyphens are legal in provider tool names
+	 * (^[a-zA-Z0-9_-]+$ for both Anthropic and OpenAI), so only "/" needs
+	 * mapping.
+	 *
+	 * @param string $ability_name Ability name (e.g. core/get-site-info).
+	 * @return string Provider tool name (e.g. ability_core_get-site-info).
+	 */
+	public static function provider_tool_name( $ability_name ) {
+		return 'ability_' . str_replace( '/', '_', (string) $ability_name );
+	}
+
+	/**
+	 * Build a provider-tool-name => ability-name map with collision detection.
+	 *
+	 * The transform is lossy ("a/b" and "a_b" both become "ability_a_b"),
+	 * so colliding abilities are EXCLUDED from the map - never guessed
+	 * backward from the lossy name - and reported to the caller.
+	 *
+	 * @param array $configs Ability permission configs (each carries ability_name).
+	 * @return array Keys: map (tool => ability), collisions (tool => ability names).
+	 */
+	public static function build_provider_tool_map( $configs ) {
+		$by_tool = array();
+
+		foreach ( (array) $configs as $config ) {
+			if ( empty( $config['ability_name'] ) ) {
+				continue;
+			}
+
+			$ability = (string) $config['ability_name'];
+
+			$by_tool[ self::provider_tool_name( $ability ) ][ $ability ] = true;
+		}
+
+		$map        = array();
+		$collisions = array();
+
+		foreach ( $by_tool as $tool => $abilities ) {
+			$abilities = array_keys( $abilities );
+
+			if ( 1 === count( $abilities ) ) {
+				$map[ $tool ] = $abilities[0];
+			} else {
+				$collisions[ $tool ] = $abilities;
+			}
+		}
+
+		return array(
+			'map'        => $map,
+			'collisions' => $collisions,
+		);
+	}
+
+	/**
+	 * Provider tool map for the currently enabled abilities.
+	 *
+	 * Collision-excluded abilities are logged and exposed nowhere (neither
+	 * advertised to the provider nor resolvable), so chat can never run the
+	 * wrong ability from an ambiguous name.
+	 *
+	 * @return array Provider tool name => ability name.
+	 */
+	public static function provider_tool_map() {
+		$built = self::build_provider_tool_map( self::get_all_permissions( true ) );
+
+		if ( ! empty( $built['collisions'] ) && class_exists( 'Abilities_Bridge_Logger' ) ) {
+			foreach ( $built['collisions'] as $tool => $abilities ) {
+				Abilities_Bridge_Logger::log_tool_execution(
+					$tool,
+					array( 'colliding_abilities' => $abilities ),
+					'EXCLUDED: multiple enabled abilities map to the same provider tool name; none are exposed to chat.',
+					null,
+					'system'
+				);
+			}
+		}
+
+		return $built['map'];
+	}
 }
