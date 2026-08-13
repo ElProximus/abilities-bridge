@@ -246,11 +246,28 @@
 	}
 
 	/**
-	 * OpenAI connection test handler
+	 * Escape provider response text before placing it in a notice.
+	 *
+	 * @param {*} value Value to escape.
+	 * @return {string} Escaped text.
 	 */
-	function initOpenAiConnectionTest() {
-		var $button = $('#abilities-bridge-test-openai');
-		var $result = $('#abilities-bridge-openai-test-result');
+	function escapeHtml(value) {
+		return String(value)
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+			.replace(/'/g, '&#39;');
+	}
+
+	/**
+	 * Initialize one built-in provider connection test.
+	 *
+	 * @param {Object} config Provider-specific selectors and messages.
+	 */
+	function initProviderConnectionTest(config) {
+		var $button = $(config.button);
+		var $result = $(config.result);
 
 		if (!$button.length || !$result.length) {
 			return;
@@ -266,40 +283,64 @@
 
 		$button.on('click', function() {
 			$button.prop('disabled', true);
-			showResult('notice-warning', abilitiesBridgeSettings.i18n.openaiTestRunning);
+			showResult('notice-warning', abilitiesBridgeSettings.i18n[config.running]);
 
 			$.ajax({
 				url: abilitiesBridgeSettings.ajaxUrl,
 				type: 'POST',
 				data: {
-					action: 'abilities_bridge_test_openai',
+					action: config.action,
 					nonce: abilitiesBridgeSettings.nonce
 				},
 				success: function(response) {
 					if (response.success) {
-						var successMessage = abilitiesBridgeSettings.i18n.openaiTestSuccess;
+						var successMessage = abilitiesBridgeSettings.i18n[config.success];
 						if (response.data && response.data.model) {
-							successMessage += ' Model: <code>' + response.data.model + '</code>';
+							successMessage += ' Model: <code>' + escapeHtml(response.data.model) + '</code>';
 						}
 						showResult('notice-success', successMessage);
 					} else {
-						var failureMessage = abilitiesBridgeSettings.i18n.openaiTestFailed;
+						var failureMessage = abilitiesBridgeSettings.i18n[config.failed];
 						if (response.data && response.data.message) {
-							failureMessage += ' ' + response.data.message;
+							failureMessage += ' ' + escapeHtml(response.data.message);
 						}
 						if (response.data && response.data.model) {
-							failureMessage += ' Model: <code>' + response.data.model + '</code>';
+							failureMessage += ' Model: <code>' + escapeHtml(response.data.model) + '</code>';
 						}
 						showResult('notice-error', failureMessage);
 					}
 				},
 				error: function() {
-					showResult('notice-error', abilitiesBridgeSettings.i18n.openaiTestAjaxError);
+					showResult('notice-error', abilitiesBridgeSettings.i18n[config.ajaxError]);
 				},
 				complete: function() {
 					$button.prop('disabled', false);
 				}
 			});
+		});
+	}
+
+	/**
+	 * Built-in AI provider connection test handlers.
+	 */
+	function initProviderConnectionTests() {
+		initProviderConnectionTest({
+			button: '#abilities-bridge-test-anthropic',
+			result: '#abilities-bridge-anthropic-test-result',
+			action: 'abilities_bridge_test_anthropic',
+			running: 'anthropicTestRunning',
+			success: 'anthropicTestSuccess',
+			failed: 'anthropicTestFailed',
+			ajaxError: 'anthropicTestAjaxError'
+		});
+		initProviderConnectionTest({
+			button: '#abilities-bridge-test-openai',
+			result: '#abilities-bridge-openai-test-result',
+			action: 'abilities_bridge_test_openai',
+			running: 'openaiTestRunning',
+			success: 'openaiTestSuccess',
+			failed: 'openaiTestFailed',
+			ajaxError: 'openaiTestAjaxError'
 		});
 	}
 
@@ -488,7 +529,7 @@
 		initMcpCopyButtons();
 		initTabSwitching();
 		initSystemPromptRestore();
-		initOpenAiConnectionTest();
+		initProviderConnectionTests();
 		initWelcomeWizardConsent();
 		initSecurityTabHandlers();
 		initWpAiClientToggle();

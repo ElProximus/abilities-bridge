@@ -60,7 +60,7 @@
 
 	runButton.addEventListener('click', function () {
 		runButton.disabled = true;
-		statusEl.innerHTML = '<div class="notice notice-info inline"><p>Running ChatGPT MCP diagnostics...</p></div>';
+		statusEl.innerHTML = '<div class="notice notice-info inline"><p>Running ChatGPT account connection diagnostics...</p></div>';
 		resultsEl.innerHTML = '';
 
 		var body = new URLSearchParams();

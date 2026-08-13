@@ -30,15 +30,15 @@ Abilities Bridge connects AI to your WordPress site. Use the built-in admin chat
 
 = Four Ways to Connect =
 
-1. **Admin Chat** - Built-in interface using your Anthropic or OpenAI API key
-2. **Claude Custom Connector** - Connect Claude Desktop using your Claude subscription (no API key needed)
-3. **ChatGPT Developer Mode** - Connect ChatGPT using the built-in MCP endpoint with OAuth
-4. **Local MCP Config** - Connect Claude Code and other apps using API key or Claude account
+1. **Built-in Chat - API Billing** - Uses the Anthropic or OpenAI API key stored on this site and is billed directly by that API provider
+2. **Claude Account Connection** - Connect Claude Desktop through MCP and OAuth using your Claude account; it does not use the built-in chat's Anthropic API key
+3. **ChatGPT Account Connection** - Connect ChatGPT developer mode through MCP and OAuth using your ChatGPT account; it does not use the built-in chat's OpenAI API key
+4. **Other MCP Clients** - Connect Claude Code and compatible apps using the WordPress MCP credentials shown in setup
 
 = Requirements =
 
 * WordPress 6.2+, PHP 7.4+
-* Anthropic API key, OpenAI API key, or Claude account (depending on connection method)
+* An Anthropic or OpenAI API key for the built-in chat, or the corresponding Claude/ChatGPT account for an MCP account connection
 * HTTPS required for MCP OAuth 2.0 connections
 
 == External Services ==
@@ -71,22 +71,22 @@ By using this plugin, you acknowledge that data will be transmitted to your sele
 1. Upload the `abilities-bridge` folder to `/wp-content/plugins/`
 2. Activate the plugin through the 'Plugins' menu
 3. Complete the welcome wizard to grant consent
-4. Enter your Anthropic or OpenAI API key in Settings, or set up MCP in Settings > MCP Setup
+4. For built-in chat, enter and save your Anthropic or OpenAI API key in Settings > Built-in Chat. The matching test button sends one short, billable request using the selected model. For an account connection, use Settings > Connect Claude or Connect ChatGPT
 
 = MCP OAuth 2.0 Setup =
 
-**For Claude Desktop:**
+**Connect Claude to This Site - Claude Account:**
 
-1. Go to Abilities Bridge > Settings > Anthropic MCP
-2. Click "Generate New Anthropic Client Credentials"
+1. Go to Abilities Bridge > Settings > Connect Claude
+2. Click "Generate New Claude Connection Credentials"
 3. Save both Client ID and Client Secret
 4. In Claude Desktop: Settings > Connectors > Add custom connector
 5. Enter credentials and MCP endpoint URL from WordPress
 
-**For ChatGPT:**
+**Connect ChatGPT to This Site - ChatGPT Account:**
 
-1. Go to Abilities Bridge > Settings > OpenAI ChatGPT MCP
-2. Click "Generate New ChatGPT Client Credentials"
+1. Go to Abilities Bridge > Settings > Connect ChatGPT
+2. Click "Generate New ChatGPT Connection Credentials"
 3. Save both Client ID and Client Secret
 4. In ChatGPT: Settings > Apps > Advanced Settings > Enable developer mode
 5. Create app, add MCP endpoint URL, choose OAuth, and enter credentials
@@ -95,7 +95,7 @@ By using this plugin, you acknowledge that data will be transmitted to your sele
 
 = Do I need an API key? =
 
-For the admin chat interface, yes - an Anthropic or OpenAI API key is required. For MCP via Claude Desktop, you only need a Claude account (no API key needed). For ChatGPT, you need a ChatGPT account with developer mode enabled.
+For the built-in chat, yes - an Anthropic or OpenAI API key is required and API usage is billed to that provider account. Connecting Claude uses your Claude account instead and does not use the Anthropic API key. Connecting ChatGPT uses your ChatGPT account with developer mode and does not use the OpenAI API key.
 
 = Where do I get an API key? =
 
@@ -128,9 +128,9 @@ Beacon Campaign Sender is a separate plugin that connects to Abilities Bridge as
 
 == Screenshots ==
 
-1. Settings page with admin chat interface, API key configuration, and WP AI Client integration
-2. OpenAI ChatGPT MCP setup with endpoint URL and 9-step connection guide
-3. OpenAI ChatGPT MCP setup before configuration
+1. Built-in Chat settings with API-billing labels, API key configuration, and WP AI Client integration
+2. Connect ChatGPT account setup with endpoint URL and 9-step connection guide
+3. Connect ChatGPT account setup before configuration
 4. Admin chat with model selection, conversation management, and AI response
 5. Authorize Ability form with 7-gate permission controls
 6. Ability permissions list with core read-only abilities and authorized abilities
@@ -142,7 +142,10 @@ Beacon Campaign Sender is a separate plugin that connects to Abilities Bridge as
 * New: Stop is instant. Stopping a generation immediately frees the conversation so you can ask again right away; a step already running at the provider may still finish (and be billed) - its result is discarded, and the chat says so honestly
 * New: live progress while the AI works ("Calling ability: ...", elapsed time), with an explicit run-in-foreground fallback for hosts where background processing is unavailable
 * New: Claude 5 models - Opus 5 (recommended default for new users), Sonnet 5, and Fable 5, with previous models available under Legacy; every user's saved model choice is preserved
-* New: if Fable 5's stricter safety system declines an ordinary request, the answer is retried once on Opus 5 and the substitution is disclosed right in the chat
+* New: OpenAI GPT-5.6 Terra (recommended default for new users), Sol (higher quality), and Luna (fastest and cheapest), using provider-native background mode for durable chats; previous OpenAI models remain available under Legacy and every user's saved choice is preserved
+* New: if Fable 5's stricter safety system declines an ordinary request, an administrator-enabled setting retries the answer once on Opus 5 and discloses the substitution right in the chat; the setting defaults on and explains that the fallback is a second billable AI request
+* Improved: Settings now clearly separate API-billed built-in chat keys from Claude and ChatGPT account connections; the ChatGPT connection diagnostic no longer asks for an unrelated OpenAI API key
+* Improved: Built-in Chat now provides matching Anthropic and OpenAI connection-test buttons with selected-model feedback and a clear notice that each test sends one short, billable API request
 * New: interrupted OpenAI generations are recovered - the plugin retrieves finished (already billed) results from OpenAI's servers after a worker or connection loss instead of abandoning them
 * Improved: abilities that change data are never automatically re-run after a crash or interruption; the chat reports the uncertainty instead of risking a duplicate action
 * Improved: gateway timeouts (HTTP 408/504/524) are no longer retried automatically - a retry could submit a second billed generation for an answer that may already exist
@@ -152,7 +155,9 @@ Beacon Campaign Sender is a separate plugin that connects to Abilities Bridge as
 * Fixed: API authentication and rate-limit errors from Claude now show their real message immediately instead of a generic "invalid response" retried four times
 * Fixed: two administrators generating MCP credentials at the same time can no longer overwrite or discard each other's one-time secret (per-user storage)
 * Fixed: two simultaneous OAuth sign-ins can no longer erase each other's in-flight state (the pending store is now serialized)
+* Fixed: if the database cannot grant the OAuth pending-store lock, authorization now stops with a temporary retry message instead of writing without serialization and risking a lost sign-in
 * Fixed: uninstalling on a multisite network now removes tables, options, attachments, and scheduled events from every site, not just the main one
+* Fixed: uninstall validation now permits both durable chat-job tables to be removed instead of silently leaving them behind
 * Fixed: uninstall now clears the correct daily-cleanup scheduled event
 * Privacy: the readme now discloses background job metadata stored locally and OpenAI's server-side retention of background-mode responses
 

@@ -26,13 +26,31 @@ class Abilities_Bridge_OAuth_Authorization_Handler {
 	const OPTION_NAME = 'abilities_bridge_mcp_oauth';
 
 	/**
+	 * Stop an OAuth request when the pending store could not serialize access.
+	 *
+	 * @param mixed $result Pending-store result.
+	 * @return void
+	 */
+	private static function stop_on_pending_store_error( $result ) {
+		if ( ! is_wp_error( $result ) ) {
+			return;
+		}
+
+		wp_die(
+			esc_html( $result->get_error_message() ),
+			esc_html__( 'OAuth Temporarily Unavailable', 'abilities-bridge' ),
+			array( 'response' => 503 )
+		);
+	}
+
+	/**
 	 * Render OAuth admin authorization page
 	 *
 	 * Handles OAuth authorization through WordPress admin interface.
-	 * OAuth parameters are always retrieved from transient storage to prevent
+	 * OAuth parameters are always retrieved from pending storage to prevent
 	 * parameter loss during WordPress login redirects.
 	 *
-	 * Security: Uses WordPress nonce verification tied to the transient key.
+	 * Security: Uses WordPress nonce verification tied to the pending-store key.
 	 * The nonce is generated server-side and verified before granting access.
 	 */
 	public static function render_admin_authorize_page() {
@@ -89,6 +107,7 @@ class Abilities_Bridge_OAuth_Authorization_Handler {
 		// Retrieve OAuth params from the pending store (one-time use:
 		// the entry is deleted on read for security).
 		$oauth_params = Abilities_Bridge_Pending_Store::take( $transient_key );
+		self::stop_on_pending_store_error( $oauth_params );
 
 		if ( false === $oauth_params || ! is_array( $oauth_params ) ) {
 			wp_die(
@@ -146,8 +165,9 @@ class Abilities_Bridge_OAuth_Authorization_Handler {
 		// No need to check is_user_logged_in() - WordPress admin handles this.
 
 		// Generate a unique consent token tied to this specific authorization request.
-		$consent_token = wp_generate_password( 32, false );
-		Abilities_Bridge_Pending_Store::set( 'ab_consent_' . $consent_token, $oauth_params, 300 ); // 5 minutes.
+		$consent_token  = wp_generate_password( 32, false );
+		$consent_stored = Abilities_Bridge_Pending_Store::set( 'ab_consent_' . $consent_token, $oauth_params, 300 ); // 5 minutes.
+		self::stop_on_pending_store_error( $consent_stored );
 
 		// Include consent screen template.
 		// Template receives: $client_id, $redirect_uri, $response_type, $code_challenge,
@@ -230,7 +250,7 @@ class Abilities_Bridge_OAuth_Authorization_Handler {
 		// Generate nonce for authorization page access.
 		$oauth_nonce = wp_create_nonce( 'abilities_bridge_oauth_authorize_' . $transient_key );
 
-		// Store OAuth parameters in transient (10 minute expiry).
+		// Store OAuth parameters in the serialized pending store (10 minute expiry).
 		$oauth_params = array(
 			'client_id'             => $client_id,
 			'redirect_uri'          => $redirect_uri,
@@ -242,7 +262,8 @@ class Abilities_Bridge_OAuth_Authorization_Handler {
 			'oauth_nonce'           => $oauth_nonce, // Store nonce with params for verification.
 		);
 
-		Abilities_Bridge_Pending_Store::set( $transient_key, $oauth_params, 600 ); // 10 minutes.
+		$pending_stored = Abilities_Bridge_Pending_Store::set( $transient_key, $oauth_params, 600 ); // 10 minutes.
+		self::stop_on_pending_store_error( $pending_stored );
 
 		// Build admin page URL with transient key and nonce.
 		$admin_url = admin_url( 'admin.php?page=oauth-authorize&key=' . $transient_key . '&_wpnonce=' . $oauth_nonce );
@@ -325,6 +346,7 @@ class Abilities_Bridge_OAuth_Authorization_Handler {
 		// Retrieve and validate the original OAuth params from the consent
 		// store (one-time use: the entry is deleted on read).
 		$oauth_params = Abilities_Bridge_Pending_Store::take( 'ab_consent_' . $consent_token );
+		self::stop_on_pending_store_error( $oauth_params );
 		if ( ! $oauth_params || ! is_array( $oauth_params ) ) {
 			$logger->log(
 				'consent_transient_expired',

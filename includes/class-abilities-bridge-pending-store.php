@@ -38,10 +38,10 @@ class Abilities_Bridge_Pending_Store {
 	 * @param string $key        Unique key for the pending value.
 	 * @param mixed  $value      Value to store.
 	 * @param int    $expiration Lifetime in seconds.
-	 * @return void
+	 * @return true|WP_Error True on success, or a retryable lock error.
 	 */
 	public static function set( $key, $value, $expiration ) {
-		self::locked(
+		return self::locked(
 			function () use ( $key, $value, $expiration ) {
 				$entries = self::get_entries();
 
@@ -51,6 +51,7 @@ class Abilities_Bridge_Pending_Store {
 				);
 
 				update_option( self::OPTION_NAME, $entries, false );
+				return true;
 			}
 		);
 	}
@@ -62,7 +63,7 @@ class Abilities_Bridge_Pending_Store {
 	 * unbounded when flows are abandoned.
 	 *
 	 * @param string $key Key to consume.
-	 * @return mixed Stored value, or false if missing or expired.
+	 * @return mixed|WP_Error Stored value, false if missing/expired, or a retryable lock error.
 	 */
 	public static function take( $key ) {
 		return self::locked(
@@ -88,13 +89,14 @@ class Abilities_Bridge_Pending_Store {
 	/**
 	 * Remove expired entries. Intended for the daily OAuth cleanup cron.
 	 *
-	 * @return void
+	 * @return true|WP_Error True on success, or a retryable lock error.
 	 */
 	public static function cleanup_expired() {
-		self::locked(
+		return self::locked(
 			function () {
 				$entries = self::prune_expired( self::get_entries() );
 				update_option( self::OPTION_NAME, $entries, false );
+				return true;
 			}
 		);
 	}
@@ -109,12 +111,13 @@ class Abilities_Bridge_Pending_Store {
 	 * "Authorization request has expired or is invalid" (the exact symptom
 	 * the DB-backed store was built to eliminate, reachable as a race
 	 * instead of a cache bug). One named lock per site serializes the
-	 * cycle; entry keys stay per-request random as before. On lock timeout
-	 * the operation still runs (today's unserialized behavior) rather than
-	 * failing the sign-in outright.
+	 * cycle; entry keys stay per-request random as before. If the database does
+	 * not grant the lock, running the operation would restore the lost-update
+	 * race, so the store fails closed with a temporary retry error and performs
+	 * no read or write.
 	 *
 	 * @param callable $operation Operation to run while holding the lock.
-	 * @return mixed The operation's return value.
+	 * @return mixed|WP_Error The operation result, or a retryable lock error.
 	 */
 	private static function locked( $operation ) {
 		global $wpdb;
@@ -122,12 +125,18 @@ class Abilities_Bridge_Pending_Store {
 		$lock_name = 'ab_oauth_pending_' . $wpdb->prefix;
 		$acquired  = 1 === (int) $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, 3)', $lock_name ) );
 
+		if ( ! $acquired ) {
+			return new WP_Error(
+				'abilities_bridge_pending_store_busy',
+				__( 'OAuth authorization is temporarily busy because its database lock could not be obtained. The unsafe operation was not run; please restart the connection.', 'abilities-bridge' ),
+				array( 'status' => 503 )
+			);
+		}
+
 		try {
 			return $operation();
 		} finally {
-			if ( $acquired ) {
-				$wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock_name ) );
-			}
+			$wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock_name ) );
 		}
 	}
 

@@ -62,7 +62,7 @@ class Abilities_Bridge_OAuth_Redirect_Handler {
 	/**
 	 * Handle /authorize redirect
 	 *
-	 * Redirects /authorize to the admin page using transient storage for OAuth parameters.
+	 * Redirects /authorize to the admin page using pending storage for OAuth parameters.
 	 * This prevents parameters from being stripped during WordPress login redirects.
 	 */
 	public static function handle_authorize_redirect() {
@@ -77,7 +77,14 @@ class Abilities_Bridge_OAuth_Redirect_Handler {
 			// Store OAuth parameters server-side (10 minute expiry). Stored in
 			// the DB-backed pending store, not a transient, so a broken or
 			// evicting external object cache cannot lose the request mid-flow.
-			Abilities_Bridge_Pending_Store::set( $transient_key, $oauth_params, 600 );
+			$pending_stored = Abilities_Bridge_Pending_Store::set( $transient_key, $oauth_params, 600 );
+			if ( is_wp_error( $pending_stored ) ) {
+				wp_die(
+					esc_html( $pending_stored->get_error_message() ),
+					esc_html__( 'OAuth Temporarily Unavailable', 'abilities-bridge' ),
+					array( 'response' => 503 )
+				);
+			}
 
 			// Build admin page URL with only the transient key.
 			$admin_url = admin_url( 'admin.php?page=oauth-authorize&key=' . $transient_key );

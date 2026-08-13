@@ -126,7 +126,7 @@ class Abilities_Bridge_AI_Provider {
 	 */
 	public static function get_wp_ai_client_key( $provider ) {
 		// Map provider to WordPress core Connectors option names.
-		// Format: connectors_ai_{connector_id}_api_key
+		// Format: connectors_ai_{connector_id}_api_key.
 		$core_option_map = array(
 			self::PROVIDER_ANTHROPIC => 'connectors_ai_anthropic_api_key',
 			self::PROVIDER_OPENAI    => 'connectors_ai_openai_api_key',
@@ -239,8 +239,16 @@ class Abilities_Bridge_AI_Provider {
 		$provider = $provider ? $provider : self::get_current_provider();
 		$model    = $model ? self::normalize_model_for_provider( $model, $provider ) : self::get_selected_model( $provider );
 
-		if ( self::PROVIDER_OPENAI === $provider && 'gpt-5.5' === $model ) {
-			return __( 'GPT-5.5 is best for advanced coding, agentic WordPress work, complex integrations, and large-context analysis. Start a new conversation after switching models.', 'abilities-bridge' );
+		if ( self::PROVIDER_OPENAI === $provider && 'gpt-5.6-terra' === $model ) {
+			return __( 'GPT-5.6 Terra is the recommended balance for WordPress work. Durable chats run it in OpenAI background mode. Start a new conversation after switching models.', 'abilities-bridge' );
+		}
+
+		if ( self::PROVIDER_OPENAI === $provider && 'gpt-5.6-sol' === $model ) {
+			return __( 'GPT-5.6 Sol favors higher-quality answers. Durable chats run it in OpenAI background mode. Start a new conversation after switching models.', 'abilities-bridge' );
+		}
+
+		if ( self::PROVIDER_OPENAI === $provider && 'gpt-5.6-luna' === $model ) {
+			return __( 'GPT-5.6 Luna is the fastest and least expensive GPT-5.6 option. Durable chats run it in OpenAI background mode. Start a new conversation after switching models.', 'abilities-bridge' );
 		}
 
 		if ( self::PROVIDER_OPENAI === $provider ) {

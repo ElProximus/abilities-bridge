@@ -19,6 +19,8 @@ class Abilities_Bridge_Chat_Jobs {
 	const PREPARING_STALE_SECONDS = 60;
 	const TERMINAL_RETENTION_DAYS = 30;
 	const UNCERTAIN_RESUME_HOURS  = 24;
+	const RECOVERY_RETRY_SECONDS  = 60;
+	const RECOVERY_STALE_SECONDS  = 180;
 
 	/**
 	 * Per-request depth for re-entrant conversation advisory locks.
@@ -549,6 +551,10 @@ class Abilities_Bridge_Chat_Jobs {
 			)
 		);
 
+		if ( 1 === $updated ) {
+			Abilities_Bridge_Chat_Job_Runner::schedule_recovery( $id );
+		}
+
 		return 1 === $updated;
 	}
 
@@ -732,9 +738,97 @@ class Abilities_Bridge_Chat_Jobs {
 		$updated = self::terminal_transition( $id, $lock, 'uncertain', $code, $message );
 		if ( $updated ) {
 			self::reconcile_terminal_context( $id );
+			Abilities_Bridge_Chat_Job_Runner::schedule_recovery( $id, self::RECOVERY_RETRY_SECONDS );
 		}
 
 		return $updated;
+	}
+
+	/**
+	 * Reconcile an unexpected live-worker exception from durable state.
+	 *
+	 * Read-only/pre-provider work can resume under a fresh runner token. A
+	 * provider request or data-changing ability with no durable result must
+	 * remain uncertain so neither operation is repeated automatically.
+	 *
+	 * @param int    $id   Job ID.
+	 * @param string $lock Lock token held by the failed worker.
+	 * @return string unchanged|requeued|completed|uncertain|cancelled
+	 */
+	public static function handle_worker_exception( $id, $lock ) {
+		$job = self::get( $id );
+		if ( ! $job || '' === (string) $lock || ! hash_equals( (string) $job->lock_token, (string) $lock ) ) {
+			return 'unchanged';
+		}
+
+		if ( 1 === (int) $job->cancel_requested ) {
+			return self::mark_cancelled( $id, $lock ) ? 'cancelled' : 'unchanged';
+		}
+
+		if ( 'dispatching' === $job->status ) {
+			$safe_phase = in_array( $job->phase, array( 'ready', 'tools_pending' ), true ) ? $job->phase : 'ready';
+
+			return self::requeue_with_lock( $id, $lock, 'dispatching', $safe_phase ) ? 'requeued' : 'unchanged';
+		}
+
+		if ( 'running' !== $job->status ) {
+			return 'unchanged';
+		}
+
+		if ( 'provider_inflight' === $job->phase ) {
+			$persisted = self::recover_persisted_provider_message( $job );
+			if ( $persisted ) {
+				return $persisted;
+			}
+
+			$updated = self::mark_uncertain(
+				$id,
+				$lock,
+				'worker_exception_ambiguous',
+				__( 'The background worker stopped while an AI response was in flight. It may have completed and been billed, so it was not submitted again.', 'abilities-bridge' )
+			);
+
+			return $updated ? 'uncertain' : 'unchanged';
+		}
+
+		if ( in_array( $job->phase, array( 'ready', 'tools_pending' ), true ) ) {
+			return self::requeue_with_lock( $id, $lock, 'running', $job->phase ) ? 'requeued' : 'unchanged';
+		}
+
+		if ( 'tool_inflight' === $job->phase ) {
+			if ( Abilities_Bridge_Chat_Job_Steps::has_ambiguous_write( $id ) ) {
+				$updated = self::mark_uncertain(
+					$id,
+					$lock,
+					'tool_outcome_ambiguous',
+					__( 'A step that changes data may have partially completed. Check the affected data before trying again.', 'abilities-bridge' )
+				);
+
+				return $updated ? 'uncertain' : 'unchanged';
+			}
+
+			if ( ! Abilities_Bridge_Chat_Job_Steps::reset_interrupted_readonly( $id ) ) {
+				$updated = self::mark_uncertain(
+					$id,
+					$lock,
+					'tool_checkpoint_recovery_failed',
+					__( 'The interrupted read-only step could not be reset safely, so it was not run again.', 'abilities-bridge' )
+				);
+
+				return $updated ? 'uncertain' : 'unchanged';
+			}
+
+			return self::requeue_with_lock( $id, $lock, 'running', 'tools_pending' ) ? 'requeued' : 'unchanged';
+		}
+
+		$updated = self::mark_uncertain(
+			$id,
+			$lock,
+			'worker_exception_ambiguous',
+			__( 'The background worker stopped during an operation whose outcome could not be established safely.', 'abilities-bridge' )
+		);
+
+		return $updated ? 'uncertain' : 'unchanged';
 	}
 
 	/**
@@ -902,7 +996,7 @@ class Abilities_Bridge_Chat_Jobs {
 			$wpdb->prepare(
 				"SELECT * FROM %i WHERE conversation_id = %d AND user_id = %d AND
 				( (status IN ('preparing','queued','dispatching','running') AND cancel_requested = 0)
-				OR (status = 'uncertain' AND cancel_requested = 0 AND updated_at >= %s)
+				OR (status = 'uncertain' AND cancel_requested = 0 AND created_at >= %s)
 				OR (status = 'completed' AND completed_at >= %s) )
 				ORDER BY id DESC LIMIT 1",
 				self::table(),
@@ -929,7 +1023,7 @@ class Abilities_Bridge_Chat_Jobs {
 			$wpdb->prepare(
 				"SELECT * FROM %i WHERE user_id = %d AND cancel_requested = 0
 				AND (status IN ('preparing','queued','dispatching','running')
-				OR (status = 'uncertain' AND updated_at >= %s))
+				OR (status = 'uncertain' AND created_at >= %s))
 				ORDER BY id DESC LIMIT 1",
 				self::table(),
 				(int) $user_id,
@@ -946,7 +1040,9 @@ class Abilities_Bridge_Chat_Jobs {
 	 */
 	public static function begin_recovery( $id ) {
 		global $wpdb;
-		$cutoff = gmdate( 'Y-m-d H:i:s', time() - self::REDISPATCH_SECONDS );
+		$retry_cutoff = gmdate( 'Y-m-d H:i:s', time() - self::RECOVERY_RETRY_SECONDS );
+		$stale_cutoff = gmdate( 'Y-m-d H:i:s', time() - self::RECOVERY_STALE_SECONDS );
+		$age_cutoff   = gmdate( 'Y-m-d H:i:s', time() - self::UNCERTAIN_RESUME_HOURS * HOUR_IN_SECONDS );
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- recovery gate.
 		$updated = $wpdb->query(
@@ -954,12 +1050,15 @@ class Abilities_Bridge_Chat_Jobs {
 				"UPDATE %i SET recovery_status = 'recovering', updated_at = %s
 				WHERE id = %d AND status = 'uncertain' AND provider = 'openai'
 				AND phase = 'provider_inflight'
-				AND provider_response_id <> '' AND recovery_status = '' AND cancel_requested = 0
-				AND updated_at <= %s",
+				AND provider_response_id <> '' AND cancel_requested = 0 AND created_at >= %s
+				AND ( ( recovery_status = '' AND updated_at <= %s )
+					OR ( recovery_status = 'recovering' AND updated_at <= %s ) )",
 				self::table(),
 				current_time( 'mysql', true ),
 				(int) $id,
-				$cutoff
+				$age_cutoff,
+				$retry_cutoff,
+				$stale_cutoff
 			)
 		);
 
@@ -984,6 +1083,47 @@ class Abilities_Bridge_Chat_Jobs {
 				WHERE id = %d AND status = 'uncertain' AND recovery_status = 'recovering'",
 				self::table(),
 				$status,
+				current_time( 'mysql', true ),
+				(int) $id
+			)
+		);
+
+		return 1 === $updated;
+	}
+
+	/**
+	 * Whether an uncertain OpenAI response remains eligible for GET recovery.
+	 *
+	 * @param object $job Job row.
+	 * @return bool
+	 */
+	public static function is_openai_recovery_pending( $job ) {
+		if ( ! $job || 'uncertain' !== $job->status || 'openai' !== $job->provider || 'provider_inflight' !== $job->phase ) {
+			return false;
+		}
+
+		if ( empty( $job->provider_response_id ) || (int) $job->cancel_requested || 'exhausted' === $job->recovery_status ) {
+			return false;
+		}
+
+		return self::age( $job ) < self::UNCERTAIN_RESUME_HOURS * HOUR_IN_SECONDS;
+	}
+
+	/**
+	 * Close recovery after its deadline or a definitive provider result.
+	 *
+	 * @param int $id Job ID.
+	 * @return bool
+	 */
+	public static function mark_recovery_exhausted( $id ) {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- atomic recovery terminal state.
+		$updated = $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE %i SET recovery_status = 'exhausted', updated_at = %s
+				WHERE id = %d AND status = 'uncertain' AND recovery_status <> 'exhausted'",
+				self::table(),
 				current_time( 'mysql', true ),
 				(int) $id
 			)
@@ -1185,6 +1325,42 @@ class Abilities_Bridge_Chat_Jobs {
 	}
 
 	/**
+	 * Requeue a failed live worker while it still owns the row lock.
+	 *
+	 * @param int    $id          Job ID.
+	 * @param string $lock        Failed worker lock token.
+	 * @param string $from_status Current status.
+	 * @param string $phase       Safe resume phase.
+	 * @return bool
+	 */
+	private static function requeue_with_lock( $id, $lock, $from_status, $phase ) {
+		global $wpdb;
+
+		if ( ! in_array( $from_status, array( 'dispatching', 'running' ), true ) || ! in_array( $phase, array( 'ready', 'tools_pending' ), true ) ) {
+			return false;
+		}
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- live-worker recovery transition.
+		$updated = $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE %i SET status = 'queued', phase = %s, runner_token = %s, lock_token = '',
+					lease_expires_at = NULL, heartbeat_at = NULL, last_dispatched_at = NULL,
+					error_code = '', error_message = '', completed_at = NULL, recovery_status = '', updated_at = %s
+					WHERE id = %d AND lock_token = %s AND status = %s AND cancel_requested = 0",
+				self::table(),
+				$phase,
+				self::generate_token(),
+				current_time( 'mysql', true ),
+				(int) $id,
+				(string) $lock,
+				$from_status
+			)
+		);
+
+		return 1 === $updated;
+	}
+
+	/**
 	 * Mark stale provider/tool work uncertain without a live lock.
 	 *
 	 * @param int    $id      Job ID.
@@ -1196,6 +1372,7 @@ class Abilities_Bridge_Chat_Jobs {
 		$updated = self::fail_without_lock( $id, $code, $message, array( 'running' ), 'uncertain' );
 		if ( $updated ) {
 			self::reconcile_terminal_context( $id );
+			Abilities_Bridge_Chat_Job_Runner::schedule_recovery( $id, self::RECOVERY_RETRY_SECONDS );
 		}
 
 		return $updated;

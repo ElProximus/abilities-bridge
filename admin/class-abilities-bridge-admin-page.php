@@ -490,8 +490,8 @@ class Abilities_Bridge_Admin_Page {
 
 		$sweep = Abilities_Bridge_Chat_Jobs::sweep( $job->id );
 		$job   = Abilities_Bridge_Chat_Jobs::get( $job->id );
-		if ( $job && 'uncertain' === $job->status && 'provider_inflight' === $job->phase && 'openai' === $job->provider && ! empty( $job->provider_response_id ) ) {
-			$this->maybe_recover_openai_job( $job );
+		if ( Abilities_Bridge_Chat_Jobs::is_openai_recovery_pending( $job ) ) {
+			Abilities_Bridge_Chat_Job_Runner::recover_openai_job( $job );
 			$job = Abilities_Bridge_Chat_Jobs::get( $job->id );
 		}
 		if ( $job && 'queued' === $job->status && ( 'requeued' === $sweep || Abilities_Bridge_Chat_Jobs::age( $job ) >= 15 ) ) {
@@ -507,8 +507,17 @@ class Abilities_Bridge_Admin_Page {
 	 */
 	public function ajax_chat_job_cancel() {
 		$this->verify_chat_job_browser_request();
-		$job = $this->get_owned_job_from_request();
-		$job = Abilities_Bridge_Chat_Jobs::request_cancel( $job->id );
+		$job             = $this->get_owned_job_from_request();
+		$conversation_id = (int) $job->conversation_id;
+		if ( ! Abilities_Bridge_Chat_Jobs::acquire_conversation_lock( $conversation_id, 2 ) ) {
+			wp_send_json_error( array( 'message' => __( 'The conversation is busy finalizing a response. Please try Stop again.', 'abilities-bridge' ) ), 409 );
+		}
+
+		try {
+			$job = Abilities_Bridge_Chat_Jobs::request_cancel( $job->id );
+		} finally {
+			Abilities_Bridge_Chat_Jobs::release_conversation_lock( $conversation_id );
+		}
 
 		wp_send_json_success( $this->format_chat_job( $job ) );
 	}
@@ -533,6 +542,10 @@ class Abilities_Bridge_Admin_Page {
 		if ( $job ) {
 			Abilities_Bridge_Chat_Jobs::sweep( $job->id );
 			$job = Abilities_Bridge_Chat_Jobs::get( $job->id );
+			if ( Abilities_Bridge_Chat_Jobs::is_openai_recovery_pending( $job ) ) {
+				Abilities_Bridge_Chat_Job_Runner::recover_openai_job( $job );
+				$job = Abilities_Bridge_Chat_Jobs::get( $job->id );
+			}
 			if ( 'queued' === $job->status ) {
 				Abilities_Bridge_Chat_Job_Runner::dispatch( $job->id );
 			}
@@ -614,88 +627,8 @@ class Abilities_Bridge_Admin_Page {
 			'error_message'          => sanitize_text_field( $job->error_message ),
 			'background_unavailable' => 'queued' === $job->status && Abilities_Bridge_Chat_Jobs::age( $job ) >= 45,
 			'cancel_requested'       => (bool) $job->cancel_requested,
+			'recovery_pending'       => Abilities_Bridge_Chat_Jobs::is_openai_recovery_pending( $job ),
 		);
-	}
-
-	/**
-	 * Billing-safe GET recovery for a stored OpenAI response.
-	 *
-	 * This method may persist model output and queue tool work, but it never
-	 * executes an ability; only the worker may do that.
-	 *
-	 * @param object $job Uncertain OpenAI job.
-	 * @return void
-	 */
-	private function maybe_recover_openai_job( $job ) {
-		if ( ! Abilities_Bridge_Chat_Jobs::begin_recovery( $job->id ) ) {
-			return;
-		}
-
-		$client  = Abilities_Bridge_AI_Provider::create_client( Abilities_Bridge_AI_Provider::PROVIDER_OPENAI );
-		$request = $client->fetch_background_response( $job->provider_response_id );
-		if ( is_wp_error( $request ) ) {
-			$data      = (array) $request->get_error_data();
-			$exhausted = isset( $data['status'] ) && in_array( (int) $data['status'], array( 400, 401, 403, 404 ), true );
-			Abilities_Bridge_Chat_Jobs::finish_recovery_attempt( $job->id, $exhausted );
-			return;
-		}
-
-		$status = $request['data']['status'] ?? '';
-		if ( in_array( $status, array( 'queued', 'in_progress' ), true ) ) {
-			Abilities_Bridge_Chat_Jobs::finish_recovery_attempt( $job->id, false );
-			return;
-		}
-		if ( in_array( $status, array( 'failed', 'cancelled', 'incomplete' ), true ) ) {
-			Abilities_Bridge_Chat_Jobs::finish_recovery_attempt( $job->id, true );
-			return;
-		}
-
-		$parsed = $client->parse_response_data( $request['data'], $request['response_body'], $request['response_code'] );
-		if ( is_wp_error( $parsed ) ) {
-			Abilities_Bridge_Chat_Jobs::finish_recovery_attempt( $job->id, true );
-			return;
-		}
-
-		$tool_uses = array();
-		foreach ( $parsed['content'] as $block ) {
-			if ( isset( $block['type'] ) && 'tool_use' === $block['type'] ) {
-				$tool_uses[] = $block;
-			}
-		}
-		if ( ! empty( $tool_uses ) ) {
-			$seeded = Abilities_Bridge_Chat_Job_Steps::seed( $job->id, (int) $job->rounds_completed + 1, $tool_uses );
-			if ( is_wp_error( $seeded ) ) {
-				Abilities_Bridge_Chat_Jobs::finish_recovery_attempt( $job->id, true );
-				return;
-			}
-		}
-
-		$current = Abilities_Bridge_Chat_Jobs::get( $job->id );
-		if ( ! $current || 'recovering' !== $current->recovery_status || (int) $current->cancel_requested ) {
-			Abilities_Bridge_Chat_Jobs::finish_recovery_attempt( $job->id, true );
-			return;
-		}
-
-		$conversation = new Abilities_Bridge_Conversation( $job->conversation_id );
-		$message_id   = $conversation->add_assistant_message( $parsed['content'], $job->id, (int) $job->rounds_completed + 1 );
-		if ( is_wp_error( $message_id ) ) {
-			Abilities_Bridge_Chat_Jobs::finish_recovery_attempt( $job->id, false );
-			return;
-		}
-
-		if ( ! Abilities_Bridge_Chat_Jobs::finish_recovered_response( $job->id, ! empty( $tool_uses ) ) ) {
-			Abilities_Bridge_Chat_Jobs::reconcile_terminal_context( $job->id );
-			Abilities_Bridge_Chat_Jobs::finish_recovery_attempt( $job->id, true );
-			return;
-		}
-		Abilities_Bridge_Database::show_job_messages_in_context( $job->id );
-
-		if ( ! empty( $parsed['response_id'] ) ) {
-			Abilities_Bridge_Database::update_last_openai_response_id( $job->conversation_id, $parsed['response_id'] );
-		}
-		if ( ! empty( $tool_uses ) ) {
-			Abilities_Bridge_Chat_Job_Runner::dispatch( $job->id, true );
-		}
 	}
 
 	/**

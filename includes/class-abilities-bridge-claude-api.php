@@ -295,7 +295,8 @@ Important: Abilities are managed by the site administrator. If an ability you ne
 		// but the processor owns that decision so a durable worker can re-check
 		// cancellation and renew its lease before the second billable request.
 		if ( isset( $data['stop_reason'] ) && 'refusal' === $data['stop_reason'] ) {
-			$fallback_enabled = apply_filters( 'abilities_bridge_fable_fallback_enabled', true );
+			$fallback_enabled = rest_sanitize_boolean( get_option( 'abilities_bridge_fable_fallback_enabled', true ) );
+			$fallback_enabled = apply_filters( 'abilities_bridge_fable_fallback_enabled', $fallback_enabled );
 			$error_data       = array( 'model' => $model );
 			if ( 'claude-fable-5' === $model && $fallback_enabled ) {
 				$error_data['fallback_model'] = 'claude-opus-5';

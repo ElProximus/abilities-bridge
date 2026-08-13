@@ -95,7 +95,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 		<div class="wizard-section">
 			<h2><?php esc_html_e( 'API and Subscription Costs & Billing', 'abilities-bridge' ); ?></h2>
 			<ul>
-				<li><?php esc_html_e( 'This plugin requires an Anthropic or OpenAI API key for the admin chat interface, a Claude account for Claude Desktop MCP, or a ChatGPT account with developer mode for ChatGPT MCP', 'abilities-bridge' ); ?></li>
+				<li><?php esc_html_e( 'The built-in chat uses an Anthropic or OpenAI API key and direct API billing. Connecting Claude or ChatGPT through MCP instead uses the corresponding Claude or ChatGPT account and does not use the built-in chat API key.', 'abilities-bridge' ); ?></li>
 				<li><?php esc_html_e( 'API and subscription usage may incur costs charged by your AI provider (not by this plugin)', 'abilities-bridge' ); ?></li>
 				<li><?php esc_html_e( 'You are solely responsible for API and subscription usage and associated billing charges', 'abilities-bridge' ); ?></li>
 				<li><?php esc_html_e( 'For billing issues, questions, or disputes, contact your AI provider directly', 'abilities-bridge' ); ?></li>

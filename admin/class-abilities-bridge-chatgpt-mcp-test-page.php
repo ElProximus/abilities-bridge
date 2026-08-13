@@ -38,8 +38,8 @@ class Abilities_Bridge_ChatGPT_MCP_Test_Page {
 	public function add_admin_menu() {
 		add_submenu_page(
 			'abilities-bridge',
-			__( 'ChatGPT MCP Test', 'abilities-bridge' ),
-			__( 'ChatGPT MCP Test', 'abilities-bridge' ),
+			__( 'ChatGPT Connection Test', 'abilities-bridge' ),
+			__( 'ChatGPT Connection Test', 'abilities-bridge' ),
 			'manage_options',
 			self::PAGE_SLUG,
 			array( $this, 'render_page' )
@@ -88,8 +88,8 @@ class Abilities_Bridge_ChatGPT_MCP_Test_Page {
 		}
 		?>
 		<div class="wrap">
-			<h1><?php esc_html_e( 'OpenAI ChatGPT MCP Test', 'abilities-bridge' ); ?></h1>
-			<p><?php esc_html_e( 'Run local readiness checks for the direct ChatGPT MCP flow before creating the custom ChatGPT MCP app. This tests WordPress-side MCP metadata, local MCP requests, OAuth client configuration, and endpoint readiness.', 'abilities-bridge' ); ?></p>
+			<h1><?php esc_html_e( 'ChatGPT Account Connection Test', 'abilities-bridge' ); ?></h1>
+			<p><?php esc_html_e( 'Run local readiness checks before connecting a ChatGPT account to this site. This tests WordPress-side MCP metadata, local MCP requests, OAuth client configuration, and endpoint readiness. It does not require or test the OpenAI API key used by the built-in chat.', 'abilities-bridge' ); ?></p>
 
 			<div class="card" style="max-width: 1100px; padding: 20px; margin-top: 20px;">
 				<p><strong><?php esc_html_e( 'What this verifies', 'abilities-bridge' ); ?></strong></p>
@@ -102,7 +102,7 @@ class Abilities_Bridge_ChatGPT_MCP_Test_Page {
 					<li><?php esc_html_e( 'Safe read-only memory smoke test when memory is enabled and visible', 'abilities-bridge' ); ?></li>
 				</ul>
 				<p>
-					<button type="button" class="button button-primary button-hero" id="abilities-bridge-chatgpt-mcp-run-tests"><?php esc_html_e( 'Run ChatGPT MCP Tests', 'abilities-bridge' ); ?></button>
+					<button type="button" class="button button-primary button-hero" id="abilities-bridge-chatgpt-mcp-run-tests"><?php esc_html_e( 'Run ChatGPT Connection Tests', 'abilities-bridge' ); ?></button>
 				</p>
 			</div>
 
@@ -148,9 +148,8 @@ class Abilities_Bridge_ChatGPT_MCP_Test_Page {
 		$clients                      = Abilities_Bridge_OAuth_Client_Manager::get_user_clients( get_current_user_id(), Abilities_Bridge_OAuth_Client_Manager::PROFILE_CHATGPT );
 
 		$this->add_check( $results, 'Setup Complete', Abilities_Bridge_Welcome_Wizard::is_setup_complete(), __( 'Welcome wizard is complete.', 'abilities-bridge' ), __( 'Complete the welcome wizard before using MCP features.', 'abilities-bridge' ) );
-		$this->add_check( $results, 'OpenAI API Key', Abilities_Bridge_AI_Provider::has_api_key( Abilities_Bridge_AI_Provider::PROVIDER_OPENAI ), __( 'OpenAI API key is configured.', 'abilities-bridge' ), __( 'OpenAI API key is not configured.', 'abilities-bridge' ) );
 		$this->add_check( $results, 'Direct ChatGPT MCP Endpoint', ! empty( $mcp_endpoint ) && 0 === strpos( $mcp_endpoint, 'https://' ), sprintf( __( 'Direct WordPress MCP endpoint is ready: %s', 'abilities-bridge' ), $mcp_endpoint ), __( 'The direct WordPress MCP endpoint must be HTTPS for ChatGPT developer mode.', 'abilities-bridge' ), false );
-		$this->add_check( $results, 'ChatGPT OAuth Clients', ! empty( $clients ), sprintf( __( '%d ChatGPT MCP client credential set(s) found for the current administrator.', 'abilities-bridge' ), count( $clients ) ), __( 'No ChatGPT MCP client credentials found yet. Generate one in the OpenAI ChatGPT MCP tab.', 'abilities-bridge' ), true );
+		$this->add_check( $results, 'ChatGPT OAuth Clients', ! empty( $clients ), sprintf( __( '%d ChatGPT MCP client credential set(s) found for the current administrator.', 'abilities-bridge' ), count( $clients ) ), __( 'No ChatGPT MCP client credentials found yet. Generate one in the Connect ChatGPT tab.', 'abilities-bridge' ), true );
 
 		$results['debug']['chatgpt_clients']             = $clients;
 		$results['debug']['derived_endpoint']            = $mcp_endpoint;

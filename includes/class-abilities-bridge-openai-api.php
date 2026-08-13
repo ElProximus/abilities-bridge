@@ -51,11 +51,14 @@ class Abilities_Bridge_OpenAI_API {
 	 */
 	public static function get_available_models() {
 		return array(
-			'gpt-5.5' => 'GPT-5.5 (Recommended)',
-			'gpt-5.4' => 'GPT-5.4',
-			'gpt-5.2' => 'GPT-5.2',
-			'gpt-5.1' => 'GPT-5.1',
-			'gpt-5'   => 'GPT-5',
+			'gpt-5.6-terra' => 'GPT-5.6 Terra (Recommended)',
+			'gpt-5.6-sol'   => 'GPT-5.6 Sol (Higher Quality)',
+			'gpt-5.6-luna'  => 'GPT-5.6 Luna (Fastest & Cheapest)',
+			'gpt-5.5'       => 'GPT-5.5 (Legacy)',
+			'gpt-5.4'       => 'GPT-5.4 (Legacy)',
+			'gpt-5.2'       => 'GPT-5.2 (Legacy)',
+			'gpt-5.1'       => 'GPT-5.1 (Legacy)',
+			'gpt-5'         => 'GPT-5 (Legacy)',
 		);
 	}
 
@@ -82,7 +85,7 @@ class Abilities_Bridge_OpenAI_API {
 	 * @return string
 	 */
 	public static function get_default_model() {
-		return 'gpt-5.5';
+		return 'gpt-5.6-terra';
 	}
 
 	/**
@@ -114,6 +117,12 @@ class Abilities_Bridge_OpenAI_API {
 		}
 
 		$model = self::normalize_model( $model );
+
+		// GPT-5.6 reasoning tokens count against max_output_tokens. The older
+		// 4096 chat budget can consume the entire allowance before visible text.
+		if ( in_array( $model, array( 'gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-5.6-luna' ), true ) && $max_tokens <= 4096 ) {
+			$max_tokens = 16000;
+		}
 
 		$available_models = self::get_available_models();
 		if ( ! isset( $available_models[ $model ] ) ) {

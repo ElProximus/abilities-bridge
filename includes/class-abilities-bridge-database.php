@@ -1018,6 +1018,30 @@ class Abilities_Bridge_Database {
 	}
 
 	/**
+	 * Find an already-persisted assistant checkpoint for one provider round.
+	 *
+	 * Recovery callers hold the conversation lock, so this lookup makes a
+	 * retry after a process crash idempotent without requiring a schema change.
+	 *
+	 * @param int $job_id       Job ID.
+	 * @param int $round_number Provider round.
+	 * @return int Message ID, or zero when absent.
+	 */
+	public static function get_job_assistant_message_id( $job_id, $round_number ) {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- durable checkpoint lookup.
+		return (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT id FROM %i WHERE job_id = %d AND job_round = %d AND role = 'assistant' ORDER BY id ASC LIMIT 1",
+				self::table( self::TABLE_MESSAGES ),
+				(int) $job_id,
+				(int) $round_number
+			)
+		);
+	}
+
+	/**
 	 * Insert or replace one durable round's tool-result protocol message.
 	 *
 	 * Callers serialize this operation with the shared conversation lock.

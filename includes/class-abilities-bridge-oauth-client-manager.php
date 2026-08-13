@@ -252,10 +252,10 @@ class Abilities_Bridge_OAuth_Client_Manager {
 		$profile = self::normalize_profile( $profile );
 
 		if ( self::PROFILE_CHATGPT === $profile ) {
-			return __( 'OpenAI ChatGPT MCP', 'abilities-bridge' );
+			return __( 'ChatGPT Account Connection', 'abilities-bridge' );
 		}
 
-		return __( 'Anthropic MCP', 'abilities-bridge' );
+		return __( 'Claude Account Connection', 'abilities-bridge' );
 	}
 
 	/**

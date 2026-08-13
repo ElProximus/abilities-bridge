@@ -423,10 +423,10 @@ class Abilities_Bridge_Message_Processor {
 			$http_status    = isset( $error_data['status'] ) ? (int) $error_data['status'] : 0;
 			$safe_transport = ! $http_status && self::is_safe_preconnect_failure( $response );
 
-			// Residual risk: a 500/502/503 after provider acceptance can still
-			// duplicate on retry. This is the accepted reliability tradeoff in
-			// the billing-risk-minimized policy; timeout-family outcomes never retry.
-			$should_retry = $safe_transport || in_array( $http_status, array( 429, 500, 502, 503, 529 ), true );
+			// A pre-connect failure never reached the provider, and HTTP 429 is
+			// an explicit rejection. Server/gateway failures are ambiguous and
+			// normalize_generation_error() prevents a duplicate generation POST.
+			$should_retry = $safe_transport || 429 === $http_status;
 			if ( ! $should_retry || $retry === $max_retries ) {
 				return $response;
 			}
@@ -457,6 +457,17 @@ class Abilities_Bridge_Message_Processor {
 			return new WP_Error(
 				'ai_timeout_ambiguous',
 				__( 'The request timed out before the reply arrived. The AI may have finished the answer anyway (and billed it), so it was not retried automatically.', 'abilities-bridge' ),
+				array(
+					'status'   => $status,
+					'provider' => $provider,
+				)
+			);
+		}
+
+		if ( $status >= 500 ) {
+			return new WP_Error(
+				'ai_generation_ambiguous',
+				__( 'The AI provider returned a server error after the request was sent. It may still have completed and been billed, so it was not submitted again.', 'abilities-bridge' ),
 				array(
 					'status'   => $status,
 					'provider' => $provider,
@@ -932,7 +943,7 @@ class Abilities_Bridge_Message_Processor {
 
 		$friendly_messages = array(
 			'ai_timeout_ambiguous'       => 'The request timed out before the reply arrived. The AI may have finished it anyway (and billed it), so it was not retried automatically.',
-			'ai_generation_ambiguous'    => 'The AI response could not be saved or read safely. It may already have been billed, so it was not retried automatically.',
+			'ai_generation_ambiguous'    => 'The AI request outcome could not be confirmed safely. It may already have been billed, so it was not retried automatically.',
 			'ai_refusal'                 => 'The AI model declined this request through its safety system. Rewording the request usually resolves this.',
 			'job_cancelled'              => 'The chat job was stopped.',
 			'message_persistence_failed' => 'The message could not be saved. Please try again.',

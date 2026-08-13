@@ -7,16 +7,16 @@ MCP server for WordPress with admin interface. Connect Claude AI or OpenAI to ex
 Abilities Bridge provides two interfaces for connecting AI to your WordPress site:
 
 1. **Admin Chat Interface** - Built-in chatbot for direct interaction with Claude or OpenAI
-2. **MCP Integration** - Connect via Model Context Protocol to Anthropic MCP clients or a dedicated ChatGPT MCP proxy
+2. **Claude and ChatGPT Account Connections** - Connect external AI accounts through Model Context Protocol and WordPress OAuth
 
 ## Key Features
 
 - **AI Chatbot Interface** - Natural language interaction with your WordPress site
-- **MCP Integration** - Separate Anthropic MCP and OpenAI ChatGPT MCP setup flows
+- **Account Connections** - Separate Claude and ChatGPT MCP/OAuth setup flows that do not use the built-in chat API keys
 - **Memory Tool** - AI can maintain persistent notes in database-backed storage
 - **Abilities Execution** - Run authorized WordPress Abilities with permission controls
 - **Conversation Management** - Save, resume, and manage multiple conversations
-- **AI Models** - Claude Opus 4.7, Opus 4.6, Sonnet 4.6, Haiku 4.5 (Anthropic) and GPT-5.5, GPT-5.4, GPT-5.2, GPT-5.1, GPT-5 (OpenAI)
+- **AI Models** - Claude Opus 5, Fable 5, and Sonnet 5 plus legacy Claude models; OpenAI GPT-5.6 Terra, Sol, and Luna plus legacy GPT-5 models
 - **OpenAI Responses API** - OpenAI chat requests now use the Responses API for modern tool calling and conversation handling
 - **OAuth 2.0** - Secure authentication for MCP connections
 
@@ -65,7 +65,7 @@ Approval profiles may define an explicit `abilities` list. Without that list, a 
 1. Install from the WordPress plugin directory
 2. Activate the plugin
 3. Complete the welcome wizard to grant consent
-4. Go to **Abilities Bridge > Settings** and enter your Anthropic or OpenAI API key
+4. For the built-in chat, go to **Abilities Bridge > Settings > Built-in Chat**, enter and save your Anthropic or OpenAI API key, then use the matching test button if desired. Each test sends one short, billable request using the selected model. To connect an external account instead, use **Connect Claude** or **Connect ChatGPT**
 5. Start chatting
 
 ### From GitHub Release (Manual Installation)
@@ -102,21 +102,21 @@ php composer.phar install  # Install test dependencies if needed
 
 Then activate the plugin through the WordPress admin.
 
-## MCP Integration
+## Claude and ChatGPT Account Connections
 
-Abilities Bridge now separates MCP setup into two provider-specific flows.
+The built-in chat and external account connections are separate. The built-in chat uses an Anthropic or OpenAI API key stored on the site and is billed through that API account. Claude and ChatGPT account connections use MCP and WordPress OAuth; they do not use those built-in-chat API keys.
 
-### Anthropic MCP
+### Connect Claude to This Site — Claude Account
 
-1. Go to **Abilities Bridge > Settings > Anthropic MCP**
-2. Generate Anthropic MCP client credentials
+1. Go to **Abilities Bridge > Settings > Connect Claude**
+2. Generate Claude connection credentials
 3. Use the WordPress-hosted MCP endpoint directly
-4. Connect from your Anthropic MCP client and complete OAuth with PKCE
+4. Connect from Claude Desktop or another Claude MCP client and complete OAuth with PKCE
 
-### OpenAI ChatGPT MCP
+### Connect ChatGPT to This Site — ChatGPT Account
 
-1. Go to **Abilities Bridge > Settings > OpenAI ChatGPT MCP**
-2. Generate ChatGPT MCP client credentials
+1. Go to **Abilities Bridge > Settings > Connect ChatGPT**
+2. Generate ChatGPT connection credentials
 3. Copy the built-in WordPress `/mcp` endpoint
 4. Add that `/mcp` endpoint in ChatGPT developer mode
 5. Complete OAuth with PKCE using the ChatGPT-specific client credentials
@@ -257,16 +257,16 @@ Built with:
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for version history.
-## MCP Profiles
+## Account Connection Profiles
 
-Abilities Bridge now separates remote MCP setup into two provider-specific flows:
+Abilities Bridge separates remote MCP setup into two account-specific flows. Neither profile uses the provider API key configured for the built-in chat.
 
-### Anthropic MCP
+### Claude Account Connection
 - Uses the WordPress-hosted MCP endpoint directly
 - Keeps Anthropic-oriented OAuth credentials separate from ChatGPT credentials
 - Is intended for Anthropic MCP clients such as Claude Desktop
 
-### OpenAI ChatGPT MCP
+### ChatGPT Account Connection
 - Uses the WordPress-hosted MCP endpoint directly
 - Exposes the built-in HTTPS WordPress `/mcp` endpoint for ChatGPT developer mode
 - Keeps OAuth, tool discovery, and tool execution inside WordPress

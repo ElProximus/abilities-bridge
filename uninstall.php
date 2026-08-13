@@ -40,6 +40,8 @@ function abilities_bridge_validate_table_name( $table_name ) {
 		'abilities_bridge_oauth_access_tokens',
 		'abilities_bridge_activity_log',
 		'abilities_bridge_memories',
+		'abilities_bridge_chat_job_steps',
+		'abilities_bridge_chat_jobs',
 	);
 
 	// Remove prefix and check against allowlist.
@@ -232,6 +234,7 @@ function abilities_bridge_uninstall_current_site() {
 	delete_option( 'abilities_bridge_enable_memory' );
 	delete_option( 'abilities_bridge_memory_consent' );
 	delete_option( 'abilities_bridge_enable_image_attachments' );
+	delete_option( 'abilities_bridge_fable_fallback_enabled' );
 	delete_option( 'abilities_bridge_db_version' );
 	delete_option( 'abilities_bridge_db_upgrade_retry_after' );
 	delete_option( 'abilities_bridge_db_upgrade_error' );
@@ -307,6 +310,7 @@ function abilities_bridge_uninstall_current_site() {
 	wp_clear_scheduled_hook( 'abilities_bridge_log_cleanup' );
 	wp_clear_scheduled_hook( 'abilities_bridge_daily_cleanup' );
 	wp_clear_scheduled_hook( 'abilities_bridge_run_chat_job' );
+	wp_clear_scheduled_hook( 'abilities_bridge_recover_openai_chat_job' );
 }
 
 if ( is_multisite() ) {

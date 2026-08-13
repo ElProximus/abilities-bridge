@@ -311,6 +311,12 @@
 				finishJobUi();
 				return;
 			}
+			if (job.status === 'uncertain' && job.recovery_pending) {
+				$('#abilities-bridge-chat-loading span').text('Recovering the accepted OpenAI response · ' + formatElapsed(elapsed));
+				$('#abilities-bridge-run-foreground').remove();
+				jobPollTimer = setTimeout(pollJob, 15000);
+				return;
+			}
 			if (job.status === 'failed' || job.status === 'uncertain') {
 				currentJobToken = null;
 				appendMessage(job.status === 'uncertain' ? 'system' : 'error', job.error_message || (job.status === 'uncertain' ? 'The last step has an uncertain outcome and may have been billed. Check the affected data before trying again.' : 'The background chat job failed.'));
@@ -409,7 +415,7 @@
 		}).done(function(response) {
 			if (!response.success || !response.data.job) return;
 			const job = response.data.job;
-			if (['preparing', 'queued', 'dispatching', 'running'].indexOf(job.status) !== -1) {
+			if (['preparing', 'queued', 'dispatching', 'running'].indexOf(job.status) !== -1 || (job.status === 'uncertain' && job.recovery_pending)) {
 				setLoading(true);
 				$('#abilities-bridge-send-button').hide();
 				$('#abilities-bridge-stop-button').show();

@@ -95,6 +95,7 @@ function abilities_bridge_deactivate() {
 	require_once ABILITIES_BRIDGE_PLUGIN_DIR . 'includes/class-abilities-bridge-log-cleanup.php';
 	Abilities_Bridge_Log_Cleanup::unschedule();
 	wp_unschedule_hook( 'abilities_bridge_run_chat_job' );
+	wp_unschedule_hook( 'abilities_bridge_recover_openai_chat_job' );
 
 	flush_rewrite_rules();
 }

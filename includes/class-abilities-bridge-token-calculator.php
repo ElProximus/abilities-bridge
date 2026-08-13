@@ -150,6 +150,21 @@ class Abilities_Bridge_Token_Calculator {
 
 		if ( Abilities_Bridge_AI_Provider::PROVIDER_OPENAI === $provider ) {
 			$model_configs = array(
+				'gpt-5.6-terra'       => array(
+					'input_limit'  => 1050000,
+					'output_limit' => 128000,
+					'name'         => 'GPT-5.6 Terra',
+				),
+				'gpt-5.6-sol'         => array(
+					'input_limit'  => 1050000,
+					'output_limit' => 128000,
+					'name'         => 'GPT-5.6 Sol',
+				),
+				'gpt-5.6-luna'        => array(
+					'input_limit'  => 1050000,
+					'output_limit' => 128000,
+					'name'         => 'GPT-5.6 Luna',
+				),
 				'gpt-5.5'             => array(
 					'input_limit'  => 1050000,
 					'output_limit' => 128000,
@@ -184,7 +199,7 @@ class Abilities_Bridge_Token_Calculator {
 
 			$config = isset( $model_configs[ $model ] )
 				? $model_configs[ $model ]
-				: $model_configs['gpt-5.5'];
+				: $model_configs['gpt-5.6-terra'];
 		} else {
 			// Model configurations for Claude models.
 			$model_configs = array(

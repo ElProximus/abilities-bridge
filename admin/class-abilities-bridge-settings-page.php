@@ -181,16 +181,16 @@ class Abilities_Bridge_Settings_Page {
 	private function get_mcp_profiles() {
 		return array(
 			self::MCP_PROFILE_ANTHROPIC => array(
-				'label'        => __( 'Anthropic MCP', 'abilities-bridge' ),
+				'label'        => __( 'Claude Account Connection', 'abilities-bridge' ),
 				'tab'          => 'anthropic-mcp',
-				'button_label' => __( 'Generate New Anthropic Client Credentials', 'abilities-bridge' ),
-				'intro'        => __( 'Connect this WordPress site to Anthropic MCP clients such as Claude Desktop. This uses the WordPress-hosted MCP endpoint directly.', 'abilities-bridge' ),
+				'button_label' => __( 'Generate New Claude Connection Credentials', 'abilities-bridge' ),
+				'intro'        => __( 'Connect a Claude account to this WordPress site through MCP and OAuth. This is separate from the Anthropic API key used and billed for the built-in chat.', 'abilities-bridge' ),
 			),
 			self::MCP_PROFILE_CHATGPT   => array(
-				'label'        => __( 'OpenAI ChatGPT MCP', 'abilities-bridge' ),
+				'label'        => __( 'ChatGPT Account Connection', 'abilities-bridge' ),
 				'tab'          => 'chatgpt-mcp',
-				'button_label' => __( 'Generate New ChatGPT Client Credentials', 'abilities-bridge' ),
-				'intro'        => __( 'Connect ChatGPT developer mode directly to this WordPress site using the built-in MCP endpoint and separate ChatGPT-specific OAuth credentials.', 'abilities-bridge' ),
+				'button_label' => __( 'Generate New ChatGPT Connection Credentials', 'abilities-bridge' ),
+				'intro'        => __( 'Connect a ChatGPT account to this WordPress site through MCP and OAuth. This is separate from the OpenAI API key used and billed for the built-in chat.', 'abilities-bridge' ),
 			),
 		);
 	}
@@ -240,6 +240,7 @@ class Abilities_Bridge_Settings_Page {
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
 		add_action( 'admin_init', array( $this, 'handle_mcp_actions' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
+		add_action( 'wp_ajax_abilities_bridge_test_anthropic', array( $this, 'ajax_test_anthropic_connection' ) );
 		add_action( 'wp_ajax_abilities_bridge_test_openai', array( $this, 'ajax_test_openai_connection' ) );
 	}
 
@@ -281,13 +282,17 @@ class Abilities_Bridge_Settings_Page {
 				'nonce'               => wp_create_nonce( 'abilities_bridge_settings' ),
 				'memoryConsentGiven'  => (bool) get_option( 'abilities_bridge_memory_consent', false ),
 				'i18n'                => array(
-					'copied'               => __( 'Copied!', 'abilities-bridge' ),
-					'copyFailed'           => __( 'Failed to copy to clipboard', 'abilities-bridge' ),
-					'restorePromptConfirm' => __( 'Are you sure you want to restore the default system prompt? Your customizations will be lost.', 'abilities-bridge' ),
-					'openaiTestRunning'    => __( 'Testing OpenAI connection...', 'abilities-bridge' ),
-					'openaiTestSuccess'    => __( 'OpenAI connection successful.', 'abilities-bridge' ),
-					'openaiTestFailed'     => __( 'OpenAI test failed.', 'abilities-bridge' ),
-					'openaiTestAjaxError'  => __( 'OpenAI test could not be completed. Please try again.', 'abilities-bridge' ),
+					'copied'                 => __( 'Copied!', 'abilities-bridge' ),
+					'copyFailed'             => __( 'Failed to copy to clipboard', 'abilities-bridge' ),
+					'restorePromptConfirm'   => __( 'Are you sure you want to restore the default system prompt? Your customizations will be lost.', 'abilities-bridge' ),
+					'anthropicTestRunning'   => __( 'Testing Anthropic connection...', 'abilities-bridge' ),
+					'anthropicTestSuccess'   => __( 'Anthropic connection successful.', 'abilities-bridge' ),
+					'anthropicTestFailed'    => __( 'Anthropic test failed.', 'abilities-bridge' ),
+					'anthropicTestAjaxError' => __( 'Anthropic test could not be completed. Please try again.', 'abilities-bridge' ),
+					'openaiTestRunning'      => __( 'Testing OpenAI connection...', 'abilities-bridge' ),
+					'openaiTestSuccess'      => __( 'OpenAI connection successful.', 'abilities-bridge' ),
+					'openaiTestFailed'       => __( 'OpenAI test failed.', 'abilities-bridge' ),
+					'openaiTestAjaxError'    => __( 'OpenAI test could not be completed. Please try again.', 'abilities-bridge' ),
 				),
 				'defaultSystemPrompt' => Abilities_Bridge_Claude_API::get_default_system_prompt(),
 			)
@@ -340,6 +345,16 @@ class Abilities_Bridge_Settings_Page {
 
 		register_setting(
 			'abilities_bridge_settings',
+			'abilities_bridge_fable_fallback_enabled',
+			array(
+				'type'              => 'boolean',
+				'sanitize_callback' => 'rest_sanitize_boolean',
+				'default'           => true,
+			)
+		);
+
+		register_setting(
+			'abilities_bridge_settings',
 			'abilities_bridge_use_wp_ai_client',
 			array(
 				'type'              => 'boolean',
@@ -370,14 +385,14 @@ class Abilities_Bridge_Settings_Page {
 
 		add_settings_section(
 			'abilities_bridge_api_section',
-			__( 'AI Provider Configuration', 'abilities-bridge' ),
+			__( 'Built-in AI Chat — API Billing', 'abilities-bridge' ),
 			array( $this, 'render_section' ),
 			'abilities-bridge-settings'
 		);
 
 		add_settings_field(
 			'abilities_bridge_api_key',
-			__( 'Anthropic API Key', 'abilities-bridge' ),
+			__( 'Anthropic API Key — Built-in Chat', 'abilities-bridge' ),
 			array( $this, 'render_api_key_field' ),
 			'abilities-bridge-settings',
 			'abilities_bridge_api_section'
@@ -385,7 +400,7 @@ class Abilities_Bridge_Settings_Page {
 
 		add_settings_field(
 			'abilities_bridge_openai_api_key',
-			__( 'OpenAI API Key', 'abilities-bridge' ),
+			__( 'OpenAI API Key — Built-in Chat', 'abilities-bridge' ),
 			array( $this, 'render_openai_api_key_field' ),
 			'abilities-bridge-settings',
 			'abilities_bridge_api_section'
@@ -393,7 +408,7 @@ class Abilities_Bridge_Settings_Page {
 
 		add_settings_field(
 			'abilities_bridge_use_wp_ai_client',
-			__( 'WP AI Client', 'abilities-bridge' ),
+			__( 'WP AI Client Keys — Built-in Chat', 'abilities-bridge' ),
 			array( $this, 'render_wp_ai_client_field' ),
 			'abilities-bridge-settings',
 			'abilities_bridge_api_section'
@@ -411,6 +426,14 @@ class Abilities_Bridge_Settings_Page {
 			'abilities_bridge_enable_image_attachments',
 			__( 'Image Attachments', 'abilities-bridge' ),
 			array( $this, 'render_image_attachments_field' ),
+			'abilities-bridge-settings',
+			'abilities_bridge_api_section'
+		);
+
+		add_settings_field(
+			'abilities_bridge_fable_fallback_enabled',
+			__( 'Fable Refusal Fallback', 'abilities-bridge' ),
+			array( $this, 'render_fable_fallback_field' ),
 			'abilities-bridge-settings',
 			'abilities_bridge_api_section'
 		);
@@ -510,7 +533,7 @@ class Abilities_Bridge_Settings_Page {
 			printf(
 				wp_kses(
 					/* translators: %s: Anthropic console URL */
-					__( 'Enter your API keys below. You can get an Anthropic key from the <a href="%s" target="_blank">Anthropic Console</a>.', 'abilities-bridge' ),
+					__( 'These API keys power the built-in Abilities Bridge chat and are billed directly by the API provider. They do not connect a Claude or ChatGPT account to this site. Use the Connect Claude or Connect ChatGPT tabs for those separate account connections. You can get an Anthropic key from the <a href="%s" target="_blank">Anthropic Console</a>.', 'abilities-bridge' ),
 					array(
 						'a' => array(
 							'href'   => array(),
@@ -529,7 +552,9 @@ class Abilities_Bridge_Settings_Page {
 	 * Render API key field
 	 */
 	public function render_api_key_field() {
-		$api_key = get_option( 'abilities_bridge_api_key', '' );
+		$api_key        = get_option( 'abilities_bridge_api_key', '' );
+		$model          = Abilities_Bridge_AI_Provider::get_selected_model( Abilities_Bridge_AI_Provider::PROVIDER_ANTHROPIC );
+		$model_guidance = Abilities_Bridge_AI_Provider::get_model_guidance( $model, Abilities_Bridge_AI_Provider::PROVIDER_ANTHROPIC );
 		?>
 		<input
 			type="password"
@@ -540,7 +565,28 @@ class Abilities_Bridge_Settings_Page {
 			autocomplete="off"
 		/>
 		<p class="description">
-			<?php esc_html_e( 'Your Anthropic API key (starts with "sk-ant-"). This will be stored securely in your database.', 'abilities-bridge' ); ?>
+			<?php esc_html_e( 'Used only by the built-in chat and billed to your Anthropic API account. It does not connect your Claude account. The key starts with "sk-ant-" and is stored in your database.', 'abilities-bridge' ); ?>
+		</p>
+		<p>
+			<button type="button" class="button" id="abilities-bridge-test-anthropic">
+				<?php esc_html_e( 'Test Built-in Anthropic Chat', 'abilities-bridge' ); ?>
+			</button>
+		</p>
+		<div id="abilities-bridge-anthropic-test-result" class="notice inline" style="display: none; margin: 10px 0 0 0;"></div>
+		<p class="description">
+			<?php esc_html_e( 'Save changes before testing. The test sends one short, billable API request using the selected Claude model.', 'abilities-bridge' ); ?>
+		</p>
+		<p class="description">
+			<?php
+			printf(
+				/* translators: %s: selected model id */
+				esc_html__( 'Current Anthropic model: %s', 'abilities-bridge' ),
+				'<code>' . esc_html( $model ) . '</code>'
+			);
+			?>
+		</p>
+		<p class="description">
+			<?php echo esc_html( $model_guidance ); ?>
 		</p>
 
 		<!-- API Key Consent Checkboxes -->
@@ -578,14 +624,17 @@ class Abilities_Bridge_Settings_Page {
 			autocomplete="off"
 		/>
 		<p class="description">
-			<?php esc_html_e( 'Your OpenAI API key (starts with "sk-"). This will be stored securely in your database.', 'abilities-bridge' ); ?>
+			<?php esc_html_e( 'Used only by the built-in chat and billed to your OpenAI API account. It does not connect your ChatGPT account. The key starts with "sk-" and is stored in your database.', 'abilities-bridge' ); ?>
 		</p>
 		<p>
 			<button type="button" class="button" id="abilities-bridge-test-openai">
-				<?php esc_html_e( 'Test OpenAI Connection', 'abilities-bridge' ); ?>
+				<?php esc_html_e( 'Test Built-in OpenAI Chat', 'abilities-bridge' ); ?>
 			</button>
 		</p>
 		<div id="abilities-bridge-openai-test-result" class="notice inline" style="display: none; margin: 10px 0 0 0;"></div>
+		<p class="description">
+			<?php esc_html_e( 'Save changes before testing. The test sends one short, billable API request using the selected OpenAI model.', 'abilities-bridge' ); ?>
+		</p>
 		<p class="description">
 			<?php
 			printf(
@@ -719,6 +768,87 @@ class Abilities_Bridge_Settings_Page {
 			<?php esc_html_e( 'Turning this off blocks new image attachments on both the main chat and floating bubble. Existing conversation image previews remain visible.', 'abilities-bridge' ); ?>
 		</p>
 		<?php
+	}
+
+	/**
+	 * Render Fable refusal fallback field.
+	 */
+	public function render_fable_fallback_field() {
+		$enabled = rest_sanitize_boolean( get_option( 'abilities_bridge_fable_fallback_enabled', true ) );
+		?>
+		<input type="hidden" name="abilities_bridge_fable_fallback_enabled" value="0" />
+		<label for="abilities_bridge_fable_fallback_enabled">
+			<input
+				type="checkbox"
+				name="abilities_bridge_fable_fallback_enabled"
+				id="abilities_bridge_fable_fallback_enabled"
+				value="1"
+				<?php checked( $enabled, true ); ?>
+			/>
+			<?php esc_html_e( 'If Claude Fable 5 declines a request, retry it once with Claude Opus 5.', 'abilities-bridge' ); ?>
+		</label>
+		<p class="description">
+			<?php esc_html_e( 'This makes a second billable AI request only after a definite Fable safety refusal, never after an error or timeout. The chat and job activity identify which model answered.', 'abilities-bridge' ); ?>
+		</p>
+		<?php
+	}
+
+	/**
+	 * AJAX: Test Anthropic API connection.
+	 */
+	public function ajax_test_anthropic_connection() {
+		check_ajax_referer( 'abilities_bridge_settings', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Insufficient permissions.', 'abilities-bridge' ) ) );
+		}
+
+		$provider = Abilities_Bridge_AI_Provider::PROVIDER_ANTHROPIC;
+		$model    = Abilities_Bridge_AI_Provider::get_selected_model( $provider );
+
+		if ( ! Abilities_Bridge_AI_Provider::has_api_key( $provider ) ) {
+			wp_send_json_error(
+				array(
+					'code'    => 'no_api_key',
+					'message' => __( 'Anthropic API key is not configured.', 'abilities-bridge' ),
+					'model'   => $model,
+				)
+			);
+		}
+
+		$anthropic_client = Abilities_Bridge_AI_Provider::create_client( $provider );
+		$result           = $anthropic_client->send_message(
+			array(
+				array(
+					'role'    => 'user',
+					'content' => 'Return exactly: OK',
+				),
+			),
+			array(),
+			32,
+			$model
+		);
+
+		if ( is_wp_error( $result ) ) {
+			$error_data = (array) $result->get_error_data();
+			wp_send_json_error(
+				array(
+					'code'         => $result->get_error_code(),
+					'message'      => $result->get_error_message(),
+					'model'        => $model,
+					'provider'     => 'anthropic',
+					'status'       => isset( $error_data['status'] ) ? intval( $error_data['status'] ) : null,
+					'provider_msg' => isset( $error_data['provider_message'] ) ? sanitize_text_field( $error_data['provider_message'] ) : '',
+				)
+			);
+		}
+
+		wp_send_json_success(
+			array(
+				'message' => __( 'Anthropic test succeeded.', 'abilities-bridge' ),
+				'model'   => $model,
+			)
+		);
 	}
 
 	/**
@@ -1124,9 +1254,9 @@ class Abilities_Bridge_Settings_Page {
 
 		?>
 		<div class="card" style="max-width: 100%; margin-top: 20px;">
-			<h2><?php esc_html_e( 'Anthropic MCP', 'abilities-bridge' ); ?></h2>
+			<h2><?php esc_html_e( 'Connect Claude to This Site — Claude Account', 'abilities-bridge' ); ?></h2>
 			<p>
-				<?php esc_html_e( 'Connect this WordPress site to Anthropic MCP clients such as Claude Desktop using the Model Context Protocol (MCP). This creates a remote connector that runs on your WordPress server.', 'abilities-bridge' ); ?>
+				<?php esc_html_e( 'Connect Claude Desktop or another Claude MCP client through your Claude account and WordPress OAuth. This does not use the Anthropic API key configured for the built-in chat and does not create built-in-chat API charges.', 'abilities-bridge' ); ?>
 			</p>
 
 		<?php if ( ! is_ssl() ) : ?>
@@ -1142,7 +1272,7 @@ class Abilities_Bridge_Settings_Page {
 
 			<div style="background: #f0f6fc; border-left: 4px solid #0073aa; padding: 15px; margin: 15px 0;">
 				<h4 style="margin-top: 0;"><?php esc_html_e( 'Step 1: Remote MCP Server URL', 'abilities-bridge' ); ?></h4>
-				<p><?php esc_html_e( 'Use this URL to connect from Anthropic MCP clients:', 'abilities-bridge' ); ?></p>
+				<p><?php esc_html_e( 'Use this URL to connect Claude Desktop or another Claude MCP client:', 'abilities-bridge' ); ?></p>
 				<code id="mcp-endpoint-url" style="display: block; padding: 10px; background: #fff; border: 1px solid #ddd;">
 					<?php echo esc_url( $mcp_endpoint ); ?>
 				</code>
@@ -1192,7 +1322,7 @@ class Abilities_Bridge_Settings_Page {
 						<input type="hidden" name="mcp_profile" value="<?php echo esc_attr( self::MCP_PROFILE_ANTHROPIC ); ?>">
 						<p>
 							<button type="submit" class="button button-primary">
-								<?php esc_html_e( 'Generate New Anthropic Client Credentials', 'abilities-bridge' ); ?>
+								<?php esc_html_e( 'Generate New Claude Connection Credentials', 'abilities-bridge' ); ?>
 							</button>
 						</p>
 					</form>
@@ -1212,7 +1342,7 @@ class Abilities_Bridge_Settings_Page {
 			</div>
 
 			<div style="background: #f0f6fc; border-left: 4px solid #0073aa; padding: 15px; margin: 15px 0;">
-				<h4 style="margin-top: 0;"><?php esc_html_e( 'Step 3: Add to Anthropic MCP Client', 'abilities-bridge' ); ?></h4>
+				<h4 style="margin-top: 0;"><?php esc_html_e( 'Step 3: Add to Claude', 'abilities-bridge' ); ?></h4>
 
 				<p><strong><?php esc_html_e( 'Method A: Using Claude Desktop GUI (Recommended):', 'abilities-bridge' ); ?></strong></p>
 				<ol style="margin-left: 20px;">
@@ -1314,8 +1444,8 @@ class Abilities_Bridge_Settings_Page {
 		}
 		?>
 		<div class="card" style="max-width: 100%; margin-top: 20px;">
-			<h2><?php esc_html_e( 'OpenAI ChatGPT MCP', 'abilities-bridge' ); ?></h2>
-			<p><?php esc_html_e( 'Connect ChatGPT developer mode directly to this WordPress site. This uses the built-in HTTPS MCP endpoint and separate ChatGPT-specific OAuth credentials so the ChatGPT flow stays clear and self-contained inside WordPress.', 'abilities-bridge' ); ?></p>
+			<h2><?php esc_html_e( 'Connect ChatGPT to This Site — ChatGPT Account', 'abilities-bridge' ); ?></h2>
+			<p><?php esc_html_e( 'Connect ChatGPT developer mode through your ChatGPT account and WordPress OAuth. This does not use the OpenAI API key configured for the built-in chat and does not create built-in-chat API charges.', 'abilities-bridge' ); ?></p>
 
 			<div style="background: #f0f6fc; border-left: 4px solid #0073aa; padding: 15px; margin: 15px 0;">
 				<h4 style="margin-top: 0;"><?php esc_html_e( 'Step 1: Direct WordPress /mcp Endpoint', 'abilities-bridge' ); ?></h4>
@@ -1340,7 +1470,7 @@ class Abilities_Bridge_Settings_Page {
 						<?php wp_nonce_field( 'abilities_bridge_mcp_generate_oauth' ); ?>
 						<input type="hidden" name="generate_oauth" value="1">
 						<input type="hidden" name="mcp_profile" value="<?php echo esc_attr( self::MCP_PROFILE_CHATGPT ); ?>">
-						<?php submit_button( __( 'Generate New ChatGPT Client Credentials', 'abilities-bridge' ), 'primary', 'submit', false ); ?>
+						<?php submit_button( __( 'Generate New ChatGPT Connection Credentials', 'abilities-bridge' ), 'primary', 'submit', false ); ?>
 					</form>
 				<?php endif; ?>
 			</div>
@@ -1421,20 +1551,20 @@ class Abilities_Bridge_Settings_Page {
 			<h2 class="nav-tab-wrapper abilities-bridge-settings-tabs">
 				<?php foreach ( $valid_tabs as $tab_id ) : ?>
 					<?php
-					$tab_labels = array(
-						'general'       => __( 'General', 'abilities-bridge' ),
-						'memory'        => __( 'Memory', 'abilities-bridge' ),
-						'anthropic-mcp' => __( 'Anthropic MCP', 'abilities-bridge' ),
-						'chatgpt-mcp'   => __( 'OpenAI ChatGPT MCP', 'abilities-bridge' ),
-						'about'         => __( 'About', 'abilities-bridge' ),
-						'pro'           => __( 'Pro Features', 'abilities-bridge' ),
-						'learn-more'    => __( 'Learn More', 'abilities-bridge' ),
-					);
-					$is_active  = ( $tab_id === $active_tab );
-					$tab_class  = 'nav-tab' . ( $is_active ? ' nav-tab-active' : '' );
-					$tab_style  = ( 'pro' === $tab_id ) ? ' style="color: #4CAF50; font-weight: 600;"' : '';
-					?>
-					<a href="#<?php echo esc_attr( $tab_id ); ?>" class="<?php echo esc_attr( $tab_class ); ?>" data-tab="<?php echo esc_attr( $tab_id ); ?>"<?php echo $tab_style; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>><?php echo esc_html( $tab_labels[ $tab_id ] ); ?></a>
+						$tab_labels = array(
+							'general'       => __( 'Built-in Chat', 'abilities-bridge' ),
+							'memory'        => __( 'Memory', 'abilities-bridge' ),
+							'anthropic-mcp' => __( 'Connect Claude', 'abilities-bridge' ),
+							'chatgpt-mcp'   => __( 'Connect ChatGPT', 'abilities-bridge' ),
+							'about'         => __( 'About', 'abilities-bridge' ),
+							'pro'           => __( 'Pro Features', 'abilities-bridge' ),
+							'learn-more'    => __( 'Learn More', 'abilities-bridge' ),
+						);
+						$is_active  = ( $tab_id === $active_tab );
+						$tab_class  = 'nav-tab' . ( $is_active ? ' nav-tab-active' : '' );
+						$tab_style  = ( 'pro' === $tab_id ) ? ' style="color: #4CAF50; font-weight: 600;"' : '';
+						?>
+						<a href="#<?php echo esc_attr( $tab_id ); ?>" class="<?php echo esc_attr( $tab_class ); ?>" data-tab="<?php echo esc_attr( $tab_id ); ?>"<?php echo $tab_style; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>><?php echo esc_html( $tab_labels[ $tab_id ] ); ?></a>
 				<?php endforeach; ?>
 			</h2>
 
@@ -1502,8 +1632,8 @@ class Abilities_Bridge_Settings_Page {
 					<?php esc_html_e( 'Abilities Bridge connects AI to your WordPress site through two interfaces:', 'abilities-bridge' ); ?>
 				</p>
 				<ol style="margin-left: 20px; margin-bottom: 15px;">
-					<li><strong><?php esc_html_e( 'Admin Chat Interface', 'abilities-bridge' ); ?></strong> - <?php esc_html_e( 'Built-in chat interface powered by Claude or OpenAI', 'abilities-bridge' ); ?></li>
-					<li><strong><?php esc_html_e( 'MCP Integration', 'abilities-bridge' ); ?></strong> - <?php esc_html_e( 'Connect via MCP (Model Context Protocol) to use with Claude Code, Claude Desktop and other MCP integrations', 'abilities-bridge' ); ?></li>
+					<li><strong><?php esc_html_e( 'Built-in Chat — API Billing', 'abilities-bridge' ); ?></strong> - <?php esc_html_e( 'Uses the Anthropic or OpenAI API key configured on this site and is billed directly by that API provider', 'abilities-bridge' ); ?></li>
+					<li><strong><?php esc_html_e( 'Claude and ChatGPT Account Connections', 'abilities-bridge' ); ?></strong> - <?php esc_html_e( 'Use MCP and WordPress OAuth; they are separate from the API keys used by the built-in chat', 'abilities-bridge' ); ?></li>
 				</ol>
 
 				<p><strong><?php esc_html_e( 'Memory Tool (Optional)', 'abilities-bridge' ); ?></strong></p>
@@ -1677,5 +1807,3 @@ class Abilities_Bridge_Settings_Page {
 		return $requirements;
 	}
 }
-
-
