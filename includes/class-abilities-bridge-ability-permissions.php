@@ -892,6 +892,16 @@ class Abilities_Bridge_Ability_Permissions {
 	 * @return array Provider tool name => ability name.
 	 */
 	public static function provider_tool_map() {
+		// Per-request memo: the map is consulted several times per tool call
+		// (resolution, read-only classification, seeding) and the permission
+		// set cannot change mid-request; this also reports any collision
+		// once per request instead of once per lookup.
+		static $memo = null;
+
+		if ( null !== $memo ) {
+			return $memo;
+		}
+
 		$built = self::build_provider_tool_map( self::get_all_permissions( true ) );
 
 		if ( ! empty( $built['collisions'] ) && class_exists( 'Abilities_Bridge_Logger' ) ) {
@@ -906,6 +916,8 @@ class Abilities_Bridge_Ability_Permissions {
 			}
 		}
 
-		return $built['map'];
+		$memo = $built['map'];
+
+		return $memo;
 	}
 }
