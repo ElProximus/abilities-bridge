@@ -423,10 +423,15 @@ class Abilities_Bridge_Message_Processor {
 			$http_status    = isset( $error_data['status'] ) ? (int) $error_data['status'] : 0;
 			$safe_transport = ! $http_status && self::is_safe_preconnect_failure( $response );
 
-			// A pre-connect failure never reached the provider, and HTTP 429 is
-			// an explicit rejection. Server/gateway failures are ambiguous and
+			// A pre-connect failure never reached the provider; HTTP 429 is an
+			// explicit rejection; 529 (Anthropic overloaded) and Anthropic's
+			// 500 are documented retry-safe pre-generation rejections. All
+			// other server/gateway failures are ambiguous and
 			// normalize_generation_error() prevents a duplicate generation POST.
-			$should_retry = $safe_transport || 429 === $http_status;
+			$should_retry = $safe_transport
+				|| 429 === $http_status
+				|| 529 === $http_status
+				|| ( 500 === $http_status && 'anthropic' === $provider );
 			if ( ! $should_retry || $retry === $max_retries ) {
 				return $response;
 			}
@@ -462,6 +467,15 @@ class Abilities_Bridge_Message_Processor {
 					'provider' => $provider,
 				)
 			);
+		}
+
+		// HTTP 529 (Anthropic "overloaded") and Anthropic's HTTP 500 are
+		// documented retry-safe rejections issued before generation starts -
+		// they are not billed, so calling them "may have been billed" would
+		// be untrue and a delayed retry cannot duplicate work. They keep
+		// their provider error code and stay retryable.
+		if ( 529 === $status || ( 500 === $status && 'anthropic' === $provider ) ) {
+			return $error;
 		}
 
 		if ( $status >= 500 ) {
