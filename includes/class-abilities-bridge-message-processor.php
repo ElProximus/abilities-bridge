@@ -425,13 +425,14 @@ class Abilities_Bridge_Message_Processor {
 
 			// A pre-connect failure never reached the provider; HTTP 429 is an
 			// explicit rejection; 529 (Anthropic overloaded) and Anthropic's
-			// 500 are documented retry-safe pre-generation rejections. All
-			// other server/gateway failures are ambiguous and
-			// normalize_generation_error() prevents a duplicate generation POST.
+			// 500 are provider-documented transient failures retried as a
+			// deliberate reliability tradeoff (a rare accepted-then-errored
+			// request could still duplicate work). All other server/gateway
+			// failures are ambiguous and normalize_generation_error()
+			// prevents a duplicate generation POST.
 			$should_retry = $safe_transport
 				|| 429 === $http_status
-				|| 529 === $http_status
-				|| ( 500 === $http_status && 'anthropic' === $provider );
+				|| ( 'anthropic' === $provider && in_array( $http_status, array( 500, 529 ), true ) );
 			if ( ! $should_retry || $retry === $max_retries ) {
 				return $response;
 			}
@@ -470,11 +471,14 @@ class Abilities_Bridge_Message_Processor {
 		}
 
 		// HTTP 529 (Anthropic "overloaded") and Anthropic's HTTP 500 are
-		// documented retry-safe rejections issued before generation starts -
-		// they are not billed, so calling them "may have been billed" would
-		// be untrue and a delayed retry cannot duplicate work. They keep
-		// their provider error code and stay retryable.
-		if ( 529 === $status || ( 500 === $status && 'anthropic' === $provider ) ) {
+		// provider-documented transient failures that Anthropic recommends
+		// retrying. Retrying them is a deliberate reliability tradeoff: in
+		// the rare case a request was accepted before the error (or an
+		// intermediary failed after acceptance), a retry could duplicate
+		// generation and billing. They keep their provider error code and
+		// stay retryable; all other 5xx/gateway ambiguity (and OpenAI 500)
+		// keeps the conservative one-POST classification below.
+		if ( 'anthropic' === $provider && in_array( $status, array( 500, 529 ), true ) ) {
 			return $error;
 		}
 

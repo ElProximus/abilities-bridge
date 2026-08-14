@@ -317,13 +317,10 @@ class Abilities_Bridge_MCP_Server {
 				$ability = wp_get_ability( $ability_name );
 
 				if ( $ability ) {
-					// Get input schema from ability.
-					$input_schema = $ability->get_input_schema();
-
-					// Skip abilities without input schemas - they cannot accept parameters.
-					if ( empty( $input_schema ) ) {
-						continue;
-					}
+					// Provider-ready input schema: no-input abilities are
+					// advertised with an empty object schema, not skipped
+					// (same defect as the chat tool builder had).
+					$input_schema = Abilities_Bridge_Ability_Permissions::provider_input_schema( $ability->get_input_schema() );
 
 					// Fix: Ensure empty properties array encodes as {} not [].
 					// PHP's json_encode converts empty arrays to [], but MCP protocol requires objects.

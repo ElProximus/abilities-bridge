@@ -528,14 +528,9 @@ Important: Abilities are managed by the site administrator. If an ability you ne
 				$ability = wp_get_ability( $ability_name );
 
 				if ( $ability ) {
-					// Get input schema from ability.
-					$input_schema = $ability->get_input_schema();
-
-					// Skip abilities without input schemas - they cannot accept parameters.
-					// The WordPress Abilities API requires input schemas to validate parameters.
-					if ( empty( $input_schema ) ) {
-						continue;
-					}
+					// Provider-ready input schema: no-input abilities are
+					// advertised with an empty object schema, not skipped.
+					$input_schema = Abilities_Bridge_Ability_Permissions::provider_input_schema( $ability->get_input_schema() );
 
 					// Note: WordPress Abilities API already returns properly formatted JSON Schema.
 					// No conversion needed - schemas are already Anthropic API compatible.

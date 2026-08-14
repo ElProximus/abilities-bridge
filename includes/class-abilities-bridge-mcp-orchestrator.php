@@ -81,6 +81,13 @@ class Abilities_Bridge_MCP_Orchestrator {
 			);
 		}
 
+		// No-input abilities expect NULL rather than the empty object/array
+		// a provider echoes back; abilities with a schema get input unchanged.
+		$parameters = Abilities_Bridge_Ability_Permissions::normalize_ability_input(
+			$parameters,
+			$ability->get_input_schema()
+		);
+
 		// ========================================
 		// GATE 3: Validate input against schema.
 		// ========================================

@@ -920,4 +920,46 @@ class Abilities_Bridge_Ability_Permissions {
 
 		return $memo;
 	}
+
+	/**
+	 * Provider-compatible input schema for an ability schema.
+	 *
+	 * WordPress permits Abilities without input parameters; providers still
+	 * require an object schema, so an empty ability schema is advertised as
+	 * an empty object instead of the ability being skipped (the old
+	 * behavior, which hid enabled no-input abilities such as
+	 * core/get-environment-info from every provider).
+	 *
+	 * @param mixed $schema Ability input schema (possibly empty).
+	 * @return array Provider-ready JSON schema.
+	 */
+	public static function provider_input_schema( $schema ) {
+		if ( empty( $schema ) || ! is_array( $schema ) ) {
+			return array(
+				'type'       => 'object',
+				'properties' => new stdClass(),
+			);
+		}
+
+		return $schema;
+	}
+
+	/**
+	 * Normalize provider tool input for ability execution.
+	 *
+	 * No-input Abilities expect NULL input, but providers echo an empty
+	 * object (JSON-decoded to an empty array). Abilities WITH a schema
+	 * receive their input unchanged.
+	 *
+	 * @param mixed $parameters Decoded provider input.
+	 * @param mixed $schema     The ability's own input schema.
+	 * @return mixed Normalized input.
+	 */
+	public static function normalize_ability_input( $parameters, $schema ) {
+		if ( empty( $schema ) && ( null === $parameters || array() === $parameters ) ) {
+			return null;
+		}
+
+		return $parameters;
+	}
 }
