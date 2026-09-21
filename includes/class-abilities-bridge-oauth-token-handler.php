@@ -26,6 +26,224 @@ class Abilities_Bridge_OAuth_Token_Handler {
 	const OPTION_NAME = 'abilities_bridge_mcp_oauth';
 
 	/**
+	 * Default access token lifetime in seconds (30 days).
+	 *
+	 * MCP clients such as Claude Code do not reliably use the refresh_token
+	 * grant, so a short access token forces a manual re-authorization every
+	 * session. A long-lived access token keeps the connection usable; tokens
+	 * are stored encrypted and can be revoked per client at any time.
+	 *
+	 * @since 1.4.1
+	 */
+	const DEFAULT_ACCESS_TOKEN_LIFETIME = 30 * DAY_IN_SECONDS;
+
+	/**
+	 * Default refresh token lifetime in seconds (90 days).
+	 *
+	 * The expiry slides forward on every successful refresh, so an actively
+	 * used connection never expires; only an unused one does.
+	 *
+	 * @since 1.4.1
+	 */
+	const DEFAULT_REFRESH_TOKEN_LIFETIME = 90 * DAY_IN_SECONDS;
+
+	/**
+	 * Option storing the administrator's sign-in duration choice.
+	 *
+	 * @since 1.4.1
+	 */
+	const OPTION_TOKEN_LIFETIME = 'abilities_bridge_token_lifetime';
+
+	/**
+	 * Default sign-in duration choice.
+	 *
+	 * @since 1.4.1
+	 */
+	const DEFAULT_LIFETIME_CHOICE = '30days';
+
+	/**
+	 * Lifetime used for the "never expires" choice.
+	 *
+	 * Tokens still carry an expiry so every code path stays uniform; 100 years
+	 * is beyond any realistic deployment and keeps the value a safe integer.
+	 *
+	 * @since 1.4.1
+	 */
+	const NEVER_EXPIRES_LIFETIME = 100 * YEAR_IN_SECONDS;
+
+	/**
+	 * Sign-in duration choices offered on the settings page.
+	 *
+	 * @since 1.4.1
+	 *
+	 * @return array<string, array{seconds:int,label:string,description:string}> Keyed by choice.
+	 */
+	public static function get_lifetime_choices() {
+		return array(
+			'hour'   => array(
+				'seconds'     => HOUR_IN_SECONDS,
+				'label'       => __( '1 hour (strict)', 'abilities-bridge' ),
+				'description' => __( 'Clients that do not refresh tokens correctly will ask you to reconnect every hour.', 'abilities-bridge' ),
+			),
+			'day'    => array(
+				'seconds'     => DAY_IN_SECONDS,
+				'label'       => __( '1 day', 'abilities-bridge' ),
+				'description' => __( 'Reconnect about once a day at most.', 'abilities-bridge' ),
+			),
+			'30days' => array(
+				'seconds'     => 30 * DAY_IN_SECONDS,
+				'label'       => __( '30 days (recommended)', 'abilities-bridge' ),
+				'description' => __( 'A good balance: reconnect about once a month at most.', 'abilities-bridge' ),
+			),
+			'year'   => array(
+				'seconds'     => YEAR_IN_SECONDS,
+				'label'       => __( '1 year', 'abilities-bridge' ),
+				'description' => __( 'Reconnect about once a year at most.', 'abilities-bridge' ),
+			),
+			'never'  => array(
+				'seconds'     => self::NEVER_EXPIRES_LIFETIME,
+				'label'       => __( 'Never expires', 'abilities-bridge' ),
+				'description' => __( 'Tokens stay valid until you revoke the client. A leaked token stays usable until then, so revoke unused clients promptly.', 'abilities-bridge' ),
+			),
+		);
+	}
+
+	/**
+	 * Get the administrator's sign-in duration choice, falling back to the default.
+	 *
+	 * @since 1.4.1
+	 *
+	 * @return string One of the get_lifetime_choices() keys.
+	 */
+	public static function get_lifetime_choice() {
+		$choice = (string) get_option( self::OPTION_TOKEN_LIFETIME, self::DEFAULT_LIFETIME_CHOICE );
+		$known  = self::get_lifetime_choices();
+
+		return isset( $known[ $choice ] ) ? $choice : self::DEFAULT_LIFETIME_CHOICE;
+	}
+
+	/**
+	 * Seconds for the current sign-in duration choice.
+	 *
+	 * @since 1.4.1
+	 *
+	 * @return int
+	 */
+	public static function get_configured_access_token_lifetime() {
+		$known = self::get_lifetime_choices();
+
+		return (int) $known[ self::get_lifetime_choice() ]['seconds'];
+	}
+
+	/**
+	 * Get the access token lifetime for a client.
+	 *
+	 * @since 1.4.1
+	 *
+	 * @param string $client_id Client ID.
+	 * @return int Lifetime in seconds (at least 60).
+	 */
+	public static function get_access_token_lifetime( $client_id ) {
+		/**
+		 * Filter the OAuth access token lifetime in seconds.
+		 *
+		 * @since 1.4.1
+		 *
+		 * @param int    $lifetime  Lifetime in seconds from the settings page (default 30 days).
+		 * @param string $client_id Client ID the token is issued to.
+		 * @param string $profile   Client profile (anthropic_mcp or openai_chatgpt_mcp).
+		 */
+		$lifetime = apply_filters(
+			'abilities_bridge_access_token_lifetime',
+			self::get_configured_access_token_lifetime(),
+			(string) $client_id,
+			Abilities_Bridge_OAuth_Client_Manager::get_client_profile( $client_id )
+		);
+
+		return max( 60, (int) $lifetime );
+	}
+
+	/**
+	 * Revoke every access token for every client, keeping refresh tokens and
+	 * client credentials intact so connected clients silently obtain a fresh
+	 * access token with the current lifetime.
+	 *
+	 * @since 1.4.1
+	 *
+	 * @return int Number of access tokens removed.
+	 */
+	public static function revoke_all_access_tokens() {
+		$oauth_data = get_option( self::OPTION_NAME, array() );
+		if ( empty( $oauth_data['access_tokens'] ) || ! is_array( $oauth_data['access_tokens'] ) ) {
+			return 0;
+		}
+
+		$count                       = count( $oauth_data['access_tokens'] );
+		$oauth_data['access_tokens'] = array();
+		update_option( self::OPTION_NAME, $oauth_data );
+
+		return $count;
+	}
+
+	/**
+	 * Get the refresh token lifetime for a client.
+	 *
+	 * @since 1.4.1
+	 *
+	 * @param string $client_id Client ID.
+	 * @return int Lifetime in seconds (at least 60).
+	 */
+	public static function get_refresh_token_lifetime( $client_id ) {
+		/**
+		 * Filter the OAuth refresh token lifetime in seconds.
+		 *
+		 * @since 1.4.1
+		 *
+		 * @param int    $lifetime  Lifetime in seconds. Default 90 days, or the
+		 *                          access token lifetime if that is longer.
+		 * @param string $client_id Client ID the token is issued to.
+		 * @param string $profile   Client profile (anthropic_mcp or openai_chatgpt_mcp).
+		 */
+		$lifetime = apply_filters(
+			'abilities_bridge_refresh_token_lifetime',
+			max( self::DEFAULT_REFRESH_TOKEN_LIFETIME, self::get_configured_access_token_lifetime() ),
+			(string) $client_id,
+			Abilities_Bridge_OAuth_Client_Manager::get_client_profile( $client_id )
+		);
+
+		return max( 60, (int) $lifetime );
+	}
+
+	/**
+	 * Remove expired access and refresh tokens from the OAuth data array.
+	 *
+	 * Access tokens are appended on every issue/refresh; without pruning the
+	 * option grows without bound.
+	 *
+	 * @since 1.4.1
+	 *
+	 * @param array $oauth_data OAuth option data.
+	 * @return array OAuth data with expired tokens removed.
+	 */
+	public static function prune_expired_tokens( array $oauth_data ) {
+		$now = time();
+		foreach ( array( 'access_tokens', 'refresh_tokens' ) as $key ) {
+			if ( empty( $oauth_data[ $key ] ) || ! is_array( $oauth_data[ $key ] ) ) {
+				continue;
+			}
+			$oauth_data[ $key ] = array_values(
+				array_filter(
+					$oauth_data[ $key ],
+					function ( $token ) use ( $now ) {
+						return ! isset( $token['expires_at'] ) || $now <= (int) $token['expires_at'];
+					}
+				)
+			);
+		}
+		return $oauth_data;
+	}
+
+	/**
 	 * Handle OAuth token request
 	 *
 	 * Implements OAuth 2.0 token endpoint with multiple grant types.
@@ -257,8 +475,9 @@ class Abilities_Bridge_OAuth_Token_Handler {
 		}
 
 		// Find and validate refresh token.
-		$token_data = null;
-		foreach ( $oauth_data['refresh_tokens'] as $stored_token ) {
+		$token_data  = null;
+		$token_index = null;
+		foreach ( $oauth_data['refresh_tokens'] as $index => $stored_token ) {
 			// Decrypt stored refresh token before comparing.
 			$decrypted_token = Abilities_Bridge_Token_Encryption::decrypt( $stored_token['refresh_token'] );
 
@@ -268,7 +487,8 @@ class Abilities_Bridge_OAuth_Token_Handler {
 			}
 
 			if ( hash_equals( $decrypted_token, $refresh_token ) ) {
-				$token_data = $stored_token;
+				$token_data  = $stored_token;
+				$token_index = $index;
 				break;
 			}
 		}
@@ -292,7 +512,7 @@ class Abilities_Bridge_OAuth_Token_Handler {
 
 		// Generate new access token.
 		$access_token = wp_generate_password( 64, true, true );
-		$expires_in   = HOUR_IN_SECONDS;
+		$expires_in   = self::get_access_token_lifetime( $token_data['client_id'] );
 		$expires_at   = time() + $expires_in;
 
 		// Encrypt access token before storing.
@@ -306,6 +526,12 @@ class Abilities_Bridge_OAuth_Token_Handler {
 				array( 'status' => 500 )
 			);
 		}
+
+		// Slide the refresh token expiry forward: an actively used connection never expires.
+		$oauth_data['refresh_tokens'][ $token_index ]['expires_at'] = time() + self::get_refresh_token_lifetime( $token_data['client_id'] );
+
+		// Drop expired tokens so the option does not grow without bound.
+		$oauth_data = self::prune_expired_tokens( $oauth_data );
 
 		// Store access token (encrypted).
 		if ( ! isset( $oauth_data['access_tokens'] ) ) {
@@ -344,14 +570,14 @@ class Abilities_Bridge_OAuth_Token_Handler {
 	 * @return array Token response
 	 */
 	private static function generate_access_and_refresh_tokens( $client_id, $user_id, $scope ) {
-		// Generate new access token (1 hour expiration).
+		// Generate new access token (default 30 days, filterable).
 		$access_token = wp_generate_password( 64, true, true );
-		$expires_in   = HOUR_IN_SECONDS;
+		$expires_in   = self::get_access_token_lifetime( $client_id );
 		$expires_at   = time() + $expires_in;
 
-		// Generate refresh token (30 days expiration).
+		// Generate refresh token (default 90 days, sliding on each refresh).
 		$refresh_token   = wp_generate_password( 64, true, true );
-		$refresh_expires = time() + ( 30 * DAY_IN_SECONDS );
+		$refresh_expires = time() + self::get_refresh_token_lifetime( $client_id );
 
 		// Encrypt tokens before storing.
 		$encrypted_access_token  = Abilities_Bridge_Token_Encryption::encrypt( $access_token );
@@ -374,8 +600,8 @@ class Abilities_Bridge_OAuth_Token_Handler {
 			);
 		}
 
-		// Get OAuth data.
-		$oauth_data = get_option( self::OPTION_NAME, array() );
+		// Get OAuth data and drop expired tokens so the option does not grow without bound.
+		$oauth_data = self::prune_expired_tokens( get_option( self::OPTION_NAME, array() ) );
 
 		// Store access token (encrypted).
 		if ( ! isset( $oauth_data['access_tokens'] ) ) {

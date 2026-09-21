@@ -150,6 +150,11 @@ class Abilities_Bridge_Token_Calculator {
 
 		if ( Abilities_Bridge_AI_Provider::PROVIDER_OPENAI === $provider ) {
 			$model_configs = array(
+				'gpt-6-astra'         => array(
+					'input_limit'  => 922000,
+					'output_limit' => 128000,
+					'name'         => 'GPT-6 Astra',
+				),
 				'gpt-5.6-terra'       => array(
 					'input_limit'  => 1050000,
 					'output_limit' => 128000,
@@ -207,6 +212,11 @@ class Abilities_Bridge_Token_Calculator {
 					'input_limit'  => 1000000,
 					'output_limit' => 128000,
 					'name'         => 'Claude Opus 5',
+				),
+				'claude-fable-5-1'          => array(
+					'input_limit'  => 1000000,
+					'output_limit' => 128000,
+					'name'         => 'Claude Fable 5.1',
 				),
 				'claude-fable-5'            => array(
 					'input_limit'  => 1000000,

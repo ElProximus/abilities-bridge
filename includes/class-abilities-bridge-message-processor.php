@@ -395,7 +395,11 @@ class Abilities_Bridge_Message_Processor {
 						$response['content'],
 						array(
 							'type' => 'text',
-							'text' => __( '_Answered by Claude Opus 5 after Fable 5 declined the request._', 'abilities-bridge' ),
+							'text' => sprintf(
+								/* translators: %s: the Claude model that declined the request. */
+								__( '_Answered by Claude Opus 5 after %s declined the request._', 'abilities-bridge' ),
+								Abilities_Bridge_Claude_API::get_model_display_name( $model )
+							),
 						)
 					);
 				}

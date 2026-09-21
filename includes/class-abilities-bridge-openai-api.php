@@ -52,13 +52,14 @@ class Abilities_Bridge_OpenAI_API {
 	public static function get_available_models() {
 		return array(
 			'gpt-5.6-terra' => 'GPT-5.6 Terra (Recommended)',
+			'gpt-6-astra'   => 'GPT-6 Astra (Maximum Capability — premium pricing, slower)',
 			'gpt-5.6-sol'   => 'GPT-5.6 Sol (Higher Quality)',
 			'gpt-5.6-luna'  => 'GPT-5.6 Luna (Fastest & Cheapest)',
-			'gpt-5.5'       => 'GPT-5.5 (Legacy)',
-			'gpt-5.4'       => 'GPT-5.4 (Legacy)',
-			'gpt-5.2'       => 'GPT-5.2 (Legacy)',
-			'gpt-5.1'       => 'GPT-5.1 (Legacy)',
-			'gpt-5'         => 'GPT-5 (Legacy)',
+			'gpt-5.5'       => 'GPT-5.5 (Previous generation)',
+			'gpt-5.4'       => 'GPT-5.4 (Previous generation)',
+			'gpt-5.2'       => 'GPT-5.2 (Previous generation)',
+			'gpt-5.1'       => 'GPT-5.1 (Previous generation)',
+			'gpt-5'         => 'GPT-5 (Previous generation)',
 		);
 	}
 
@@ -77,6 +78,55 @@ class Abilities_Bridge_OpenAI_API {
 		);
 
 		return isset( $aliases[ $model ] ) ? $aliases[ $model ] : $model;
+	}
+
+	/**
+	 * Reasoning models whose output budget must leave room for reasoning tokens.
+	 *
+	 * @since 1.4.1
+	 *
+	 * @return string[] Model IDs.
+	 */
+	public static function get_reasoning_models() {
+		return array( 'gpt-6-astra', 'gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-5.6-luna' );
+	}
+
+	/**
+	 * Minimum output budget for a reasoning model when the caller passed the
+	 * legacy 4096 chat budget.
+	 *
+	 * @since 1.4.1
+	 *
+	 * @param string $model Model ID.
+	 * @return int
+	 */
+	public static function get_reasoning_output_floor( $model ) {
+		return 'gpt-6-astra' === $model ? 25000 : 16000;
+	}
+
+	/**
+	 * Explicit reasoning effort for models whose omitted-effort default is not
+	 * documented. Empty string means "do not send the parameter".
+	 *
+	 * @since 1.4.1
+	 *
+	 * @param string $model Model ID.
+	 * @return string One of low|medium|high|xhigh|max, or ''.
+	 */
+	public static function get_reasoning_effort( $model ) {
+		$effort = 'gpt-6-astra' === $model ? 'medium' : '';
+
+		/**
+		 * Filter the reasoning effort sent to OpenAI for a model.
+		 *
+		 * @since 1.4.1
+		 *
+		 * @param string $effort Effort level or '' to omit.
+		 * @param string $model  Model ID.
+		 */
+		$effort = (string) apply_filters( 'abilities_bridge_openai_reasoning_effort', $effort, $model );
+
+		return in_array( $effort, array( 'low', 'medium', 'high', 'xhigh', 'max' ), true ) ? $effort : '';
 	}
 
 	/**
@@ -118,10 +168,11 @@ class Abilities_Bridge_OpenAI_API {
 
 		$model = self::normalize_model( $model );
 
-		// GPT-5.6 reasoning tokens count against max_output_tokens. The older
-		// 4096 chat budget can consume the entire allowance before visible text.
-		if ( in_array( $model, array( 'gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-5.6-luna' ), true ) && $max_tokens <= 4096 ) {
-			$max_tokens = 16000;
+		// GPT-5.6 and GPT-6 reasoning tokens count against max_output_tokens.
+		// The older 4096 chat budget can consume the entire allowance before
+		// visible text. OpenAI recommends at least 25,000 for GPT-6 Astra.
+		if ( in_array( $model, self::get_reasoning_models(), true ) && $max_tokens <= 4096 ) {
+			$max_tokens = self::get_reasoning_output_floor( $model );
 		}
 
 		$available_models = self::get_available_models();
@@ -157,6 +208,11 @@ class Abilities_Bridge_OpenAI_API {
 
 		if ( $max_tokens > 0 ) {
 			$body['max_output_tokens'] = $max_tokens;
+		}
+
+		$reasoning_effort = self::get_reasoning_effort( $model );
+		if ( '' !== $reasoning_effort ) {
+			$body['reasoning'] = array( 'effort' => $reasoning_effort );
 		}
 
 		if ( ! empty( $tools ) ) {
@@ -377,11 +433,18 @@ class Abilities_Bridge_OpenAI_API {
 		$interval  = max( 1, (int) apply_filters( 'abilities_bridge_openai_poll_interval', 30 ) );
 		$max_polls = max( 1, (int) apply_filters( 'abilities_bridge_openai_max_polls', 40 ) );
 
+		// Short answers usually finish within seconds, so poll quickly at first
+		// (2s, 4s, 8s, 16s) and only then settle on the steady interval. The
+		// steady interval remains the cap so the overall polling window is
+		// unchanged for long generations.
+		$delay = 2;
+
 		for ( $poll = 0; $poll < $max_polls; ++$poll ) {
 			if ( ! apply_filters( 'abilities_bridge_openai_continue_polling', true, $response_id ) ) {
 				return new WP_Error( 'job_cancelled', __( 'The chat job was stopped.', 'abilities-bridge' ) );
 			}
-			sleep( $interval );
+			sleep( min( $delay, $interval ) );
+			$delay = min( $delay * 2, $interval );
 			do_action( 'abilities_bridge_openai_poll_tick', $response_id );
 			$request = $this->fetch_background_response( $response_id );
 			if ( is_wp_error( $request ) ) {

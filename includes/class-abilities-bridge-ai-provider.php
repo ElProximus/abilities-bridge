@@ -87,7 +87,13 @@ class Abilities_Bridge_AI_Provider {
 		}
 
 		$user_id = get_current_user_id();
-		return update_user_meta( $user_id, 'abilities_bridge_selected_provider', $provider );
+		if ( (string) get_user_meta( $user_id, 'abilities_bridge_selected_provider', true ) === $provider ) {
+			// Already stored: update_user_meta() returns false for an unchanged
+			// value, which the caller would misreport as an invalid provider.
+			return true;
+		}
+
+		return false !== update_user_meta( $user_id, 'abilities_bridge_selected_provider', $provider );
 	}
 
 	/**
@@ -243,6 +249,10 @@ class Abilities_Bridge_AI_Provider {
 			return __( 'GPT-5.6 Terra is the recommended balance for WordPress work. Durable chats run it in OpenAI background mode. Start a new conversation after switching models.', 'abilities-bridge' );
 		}
 
+		if ( self::PROVIDER_OPENAI === $provider && 'gpt-6-astra' === $model ) {
+			return __( 'GPT-6 Astra is OpenAI\'s most capable model, priced well above GPT-5.6 and slower to answer. Durable chats run it in OpenAI background mode. Start a new conversation after switching models.', 'abilities-bridge' );
+		}
+
 		if ( self::PROVIDER_OPENAI === $provider && 'gpt-5.6-sol' === $model ) {
 			return __( 'GPT-5.6 Sol favors higher-quality answers. Durable chats run it in OpenAI background mode. Start a new conversation after switching models.', 'abilities-bridge' );
 		}
@@ -328,7 +338,11 @@ class Abilities_Bridge_AI_Provider {
 
 		$user_id = get_current_user_id();
 		$key     = 'abilities_bridge_selected_model_' . $provider;
-		$updated = update_user_meta( $user_id, $key, $model );
+		$current = (string) get_user_meta( $user_id, $key, true );
+
+		// update_user_meta() returns false when the stored value is unchanged;
+		// re-selecting the current model must still count as success.
+		$updated = ( $current === $model ) ? true : ( false !== update_user_meta( $user_id, $key, $model ) );
 		if ( self::PROVIDER_ANTHROPIC === $provider ) {
 			update_user_meta( $user_id, 'abilities_bridge_selected_model', $model );
 		}

@@ -280,18 +280,28 @@ class Abilities_Bridge_OAuth_Client_Manager {
 	public static function cleanup_expired_tokens() {
 		$oauth_data = get_option( self::OPTION_NAME, array() );
 
-		if ( empty( $oauth_data['tokens'] ) ) {
+		if ( empty( $oauth_data ) || ! is_array( $oauth_data ) ) {
 			return;
 		}
 
-		$oauth_data['tokens'] = array_filter(
-			$oauth_data['tokens'],
-			function ( $token ) {
-				return ! isset( $token['expires_at'] ) || time() < $token['expires_at'];
-			}
-		);
+		$before = strlen( serialize( $oauth_data ) ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize -- size comparison only.
 
-		update_option( self::OPTION_NAME, $oauth_data );
+		// Legacy long-lived tokens.
+		if ( ! empty( $oauth_data['tokens'] ) ) {
+			$oauth_data['tokens'] = array_filter(
+				$oauth_data['tokens'],
+				function ( $token ) {
+					return ! isset( $token['expires_at'] ) || time() < $token['expires_at'];
+				}
+			);
+		}
+
+		// OAuth 2.0 access and refresh tokens.
+		$oauth_data = Abilities_Bridge_OAuth_Token_Handler::prune_expired_tokens( $oauth_data );
+
+		if ( strlen( serialize( $oauth_data ) ) !== $before ) { // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize -- size comparison only.
+			update_option( self::OPTION_NAME, $oauth_data );
+		}
 	}
 
 	/**

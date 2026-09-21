@@ -110,9 +110,48 @@ class Abilities_Bridge_Chat_Job_Runner {
 		$job_id = isset( $_POST['job_id'] ) ? absint( wp_unslash( $_POST['job_id'] ) ) : 0;
 		$token  = isset( $_POST['runner_token'] ) ? sanitize_text_field( wp_unslash( $_POST['runner_token'] ) ) : '';
 		// phpcs:enable WordPress.Security.NonceVerification.Missing
+		if ( $job_id > 0 && '' !== $token ) {
+			self::detach_from_client();
+		}
 		$this->run_existing( $job_id, $token );
-		wp_die();
+		exit;
 	}
+
+	/**
+	 * Finish the HTTP response now and keep running in the background.
+	 *
+	 * The kick is a non-blocking loopback whose caller disconnects at once.
+	 * LiteSpeed hosts (Hostinger among them) terminate PHP the moment the
+	 * client goes away, ignoring ignore_user_abort(), so the worker must end
+	 * the response itself before doing any real work. On hosts without a
+	 * finish-request call this is a harmless early flush.
+	 *
+	 * @since 1.4.1
+	 */
+	private static function detach_from_client() {
+		ignore_user_abort( true );
+
+		if ( ! headers_sent() ) {
+			status_header( 200 );
+			nocache_headers();
+			header( 'Content-Type: text/plain; charset=utf-8' );
+			header( 'Content-Length: 2' );
+			header( 'Connection: close' );
+		}
+		echo 'ok';
+
+		while ( ob_get_level() > 0 ) {
+			ob_end_flush();
+		}
+		flush();
+
+		if ( function_exists( 'litespeed_finish_request' ) ) {
+			litespeed_finish_request();
+		} elseif ( function_exists( 'fastcgi_finish_request' ) ) {
+			fastcgi_finish_request();
+		}
+	}
+
 
 	/**
 	 * Cron backstop.

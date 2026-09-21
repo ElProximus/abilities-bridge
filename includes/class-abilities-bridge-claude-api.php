@@ -47,14 +47,43 @@ class Abilities_Bridge_Claude_API {
 	public static function get_available_models() {
 		return array(
 			'claude-opus-5'             => 'Opus 5 (Recommended)',
-			'claude-fable-5'            => 'Fable 5 (Maximum Capability — premium pricing, slower)',
+			'claude-fable-5-1'          => 'Fable 5.1 (Maximum Capability — premium pricing, slower)',
 			'claude-sonnet-5'           => 'Sonnet 5 (Fast & Economical)',
+			'claude-fable-5'            => 'Fable 5 (Legacy)',
 			'claude-opus-4-8'           => 'Opus 4.8 (Legacy)',
 			'claude-opus-4-7'           => 'Opus 4.7 (Legacy)',
 			'claude-opus-4-6'           => 'Opus 4.6 (Legacy)',
 			'claude-sonnet-4-6'         => 'Sonnet 4.6 (Legacy)',
 			'claude-haiku-4-5-20251001' => 'Haiku 4.5 (Legacy — fastest)',
 		);
+	}
+
+	/**
+	 * Human-readable name for a Claude model ID.
+	 *
+	 * @since 1.4.1
+	 *
+	 * @param string $model Model ID.
+	 * @return string Display name without the parenthetical hint, or the raw ID.
+	 */
+	public static function get_model_display_name( $model ) {
+		$models = self::get_available_models();
+		if ( ! isset( $models[ $model ] ) ) {
+			return (string) $model;
+		}
+
+		return 'Claude ' . trim( preg_replace( '/\s*\(.*$/', '', $models[ $model ] ) );
+	}
+
+	/**
+	 * Models whose safety refusal may be retried once on Claude Opus 5.
+	 *
+	 * @since 1.4.1
+	 *
+	 * @return string[] Model IDs.
+	 */
+	public static function get_fallback_eligible_models() {
+		return array( 'claude-fable-5-1', 'claude-fable-5' );
 	}
 
 	/**
@@ -98,7 +127,11 @@ class Abilities_Bridge_Claude_API {
 			return false;
 		}
 
-		return update_user_meta( $user_id, 'abilities_bridge_selected_model', $model );
+		if ( (string) get_user_meta( $user_id, 'abilities_bridge_selected_model', true ) === $model ) {
+			return true; // Unchanged values make update_user_meta() return false.
+		}
+
+		return false !== update_user_meta( $user_id, 'abilities_bridge_selected_model', $model );
 	}
 
 	/**
@@ -187,7 +220,7 @@ Important: Abilities are managed by the site administrator. If an ability you ne
 
 		// Claude 5 models think by default and thinking counts against
 		// max_tokens, so the older 4096 budget can truncate visible output.
-		if ( in_array( $model, array( 'claude-opus-5', 'claude-sonnet-5', 'claude-fable-5' ), true ) && $max_tokens <= 4096 ) {
+		if ( in_array( $model, array( 'claude-opus-5', 'claude-sonnet-5', 'claude-fable-5-1', 'claude-fable-5' ), true ) && $max_tokens <= 4096 ) {
 			$max_tokens = 16000;
 		}
 
@@ -298,7 +331,7 @@ Important: Abilities are managed by the site administrator. If an ability you ne
 			$fallback_enabled = rest_sanitize_boolean( get_option( 'abilities_bridge_fable_fallback_enabled', true ) );
 			$fallback_enabled = apply_filters( 'abilities_bridge_fable_fallback_enabled', $fallback_enabled );
 			$error_data       = array( 'model' => $model );
-			if ( 'claude-fable-5' === $model && $fallback_enabled ) {
+			if ( in_array( $model, self::get_fallback_eligible_models(), true ) && $fallback_enabled ) {
 				$error_data['fallback_model'] = 'claude-opus-5';
 			}
 

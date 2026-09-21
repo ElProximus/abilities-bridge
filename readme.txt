@@ -4,7 +4,7 @@ Tags: ai, claude, openai, mcp, abilities
 Requires at least: 6.2
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.4.0
+Stable tag: 1.4.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -128,14 +128,23 @@ Beacon Campaign Sender is a separate plugin that connects to Abilities Bridge as
 
 == Screenshots ==
 
-1. Built-in Chat settings with API-billing labels, API key configuration, and WP AI Client integration
+1. Built-in Chat settings with API-billing labels, the current Claude and OpenAI models, and WP AI Client integration
 2. Connect ChatGPT account setup with endpoint URL and 9-step connection guide
-3. Connect ChatGPT account setup before configuration
-4. Admin chat with model selection, conversation management, and AI response
+3. Connect Claude setup steps and the sign-in duration setting (1 hour to never expires)
+4. Admin chat with model selection (Claude Opus 5), conversation management, and AI response
 5. Authorize Ability form with 7-gate permission controls
 6. Ability permissions list with core read-only abilities and authorized abilities
 
 == Changelog ==
+
+= 1.4.1 =
+* New: sign-in duration setting on the Connect Claude tab (applies to ChatGPT too) - choose 1 hour, 1 day, 30 days (default), 1 year, or never expires. Shortening the duration revokes existing access tokens immediately; refresh tokens now slide (extended on every refresh) and expired tokens are pruned daily. Filters: `abilities_bridge_access_token_lifetime`, `abilities_bridge_refresh_token_lifetime`
+* New: Claude Fable 5.1 (Anthropic's most capable model) with the same one-time Opus 5 fallback after a safety refusal; Fable 5 moves to Legacy
+* New: GPT-6 Astra (OpenAI's most capable model) with background-mode durable chats; GPT-5.6 Terra stays the recommended default
+* Fix: the daily OAuth cleanup cron was never scheduled and only pruned a legacy key
+* Improved: OpenAI durable chats now check for the finished answer after 2 seconds (ramping up to 30) instead of waiting a fixed 30 seconds, so short replies arrive in seconds
+* Fix: durable chat workers died instantly on LiteSpeed hosts (Hostinger) because the server kills a request the moment its caller disconnects; the worker now finishes its HTTP response first (litespeed_finish_request / fastcgi_finish_request) and keeps running
+* Fix: re-selecting the model or provider already in use showed "Invalid model" / "Invalid provider" in the chat instead of succeeding
 
 = 1.4.0 =
 * New: durable background chat. Sending a message now runs as a tracked background job on the server instead of one long browser request - slow answers always arrive. Reload the page or close the tab mid-generation and the chat reattaches; come back later and the finished answer is waiting in the conversation

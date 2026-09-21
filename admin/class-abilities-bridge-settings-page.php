@@ -785,7 +785,7 @@ class Abilities_Bridge_Settings_Page {
 				value="1"
 				<?php checked( $enabled, true ); ?>
 			/>
-			<?php esc_html_e( 'If Claude Fable 5 declines a request, retry it once with Claude Opus 5.', 'abilities-bridge' ); ?>
+			<?php esc_html_e( 'If Claude Fable 5.1 (or Fable 5) declines a request, retry it once with Claude Opus 5.', 'abilities-bridge' ); ?>
 		</label>
 		<p class="description">
 			<?php esc_html_e( 'This makes a second billable AI request only after a definite Fable safety refusal, never after an error or timeout. The chat and job activity identify which model answered.', 'abilities-bridge' ); ?>
@@ -1219,6 +1219,118 @@ class Abilities_Bridge_Settings_Page {
 			wp_safe_redirect( $redirect_url );
 			exit;
 		}
+
+		// Handle sign-in duration (token lifetime) save.
+		if ( isset( $_POST['save_token_lifetime'] ) ) {
+			if ( ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['_wpnonce'] ) ), 'abilities_bridge_token_lifetime' ) ) {
+				wp_die(
+					esc_html__( 'Security token validation failed. Please refresh the page and try again.', 'abilities-bridge' ),
+					esc_html__( 'Security Check Failed', 'abilities-bridge' ),
+					array( 'response' => 403 )
+				);
+			}
+
+			$choices = Abilities_Bridge_OAuth_Token_Handler::get_lifetime_choices();
+			$choice  = isset( $_POST['token_lifetime'] ) ? sanitize_key( wp_unslash( $_POST['token_lifetime'] ) ) : '';
+			if ( ! isset( $choices[ $choice ] ) ) {
+				wp_die( esc_html__( 'Invalid sign-in duration.', 'abilities-bridge' ) );
+			}
+
+			$previous_seconds = Abilities_Bridge_OAuth_Token_Handler::get_configured_access_token_lifetime();
+			update_option( Abilities_Bridge_OAuth_Token_Handler::OPTION_TOKEN_LIFETIME, $choice, false );
+
+			// Shortening the duration must not leave long-lived tokens in circulation.
+			$revoked = 0;
+			if ( (int) $choices[ $choice ]['seconds'] < $previous_seconds ) {
+				$revoked = Abilities_Bridge_OAuth_Token_Handler::revoke_all_access_tokens();
+			}
+
+			$redirect_url = add_query_arg(
+				array(
+					'tab'                  => 'anthropic-mcp',
+					'token-lifetime-saved' => '1',
+					'tokens-revoked'       => (string) $revoked,
+					'_wpnonce'             => wp_create_nonce( 'abilities_bridge_settings_nav' ),
+				),
+				admin_url( 'admin.php?page=abilities-bridge-settings' )
+			);
+			wp_safe_redirect( $redirect_url );
+			exit;
+		}
+	}
+
+	/**
+	 * Render the sign-in duration (OAuth token lifetime) setting.
+	 *
+	 * Shared by the Claude and ChatGPT connections.
+	 *
+	 * @since 1.4.1
+	 */
+	private function render_token_lifetime_setting() {
+		$choices = Abilities_Bridge_OAuth_Token_Handler::get_lifetime_choices();
+		$current = Abilities_Bridge_OAuth_Token_Handler::get_lifetime_choice();
+
+		$saved   = false;
+		$revoked = 0;
+		if ( $this->verify_settings_nonce() ) {
+			$saved   = ! empty( filter_input( INPUT_GET, 'token-lifetime-saved', FILTER_SANITIZE_FULL_SPECIAL_CHARS ) );
+			$revoked = (int) filter_input( INPUT_GET, 'tokens-revoked', FILTER_SANITIZE_NUMBER_INT );
+		}
+		?>
+		<h3 style="margin-top: 30px;"><?php esc_html_e( 'How long a connected AI client stays signed in', 'abilities-bridge' ); ?></h3>
+		<p>
+			<?php esc_html_e( 'Applies to both Claude and ChatGPT connections. Longer means fewer reconnect prompts; shorter means a leaked token is useful for less time. You can revoke any client at any time regardless of this setting.', 'abilities-bridge' ); ?>
+		</p>
+
+		<?php if ( $saved ) : ?>
+			<div class="notice notice-success inline">
+				<p>
+					<?php esc_html_e( 'Sign-in duration saved.', 'abilities-bridge' ); ?>
+					<?php if ( $revoked > 0 ) : ?>
+						<?php
+						echo esc_html(
+							sprintf(
+								/* translators: %d: number of access tokens revoked. */
+								_n(
+									'%d existing access token was revoked so it cannot outlive the new duration; connected clients will refresh automatically or ask you to reconnect.',
+									'%d existing access tokens were revoked so they cannot outlive the new duration; connected clients will refresh automatically or ask you to reconnect.',
+									$revoked,
+									'abilities-bridge'
+								),
+								$revoked
+							)
+						);
+						?>
+					<?php endif; ?>
+				</p>
+			</div>
+		<?php endif; ?>
+
+		<form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=abilities-bridge-settings' ) ); ?>">
+			<?php wp_nonce_field( 'abilities_bridge_token_lifetime' ); ?>
+			<input type="hidden" name="save_token_lifetime" value="1">
+			<fieldset>
+				<legend class="screen-reader-text"><?php esc_html_e( 'Sign-in duration', 'abilities-bridge' ); ?></legend>
+				<?php foreach ( $choices as $key => $choice ) : ?>
+					<label for="abilities-bridge-token-lifetime-<?php echo esc_attr( $key ); ?>" style="display: block; margin: 8px 0;">
+						<input
+							type="radio"
+							name="token_lifetime"
+							id="abilities-bridge-token-lifetime-<?php echo esc_attr( $key ); ?>"
+							value="<?php echo esc_attr( $key ); ?>"
+							<?php checked( $current, $key ); ?>
+						/>
+						<strong><?php echo esc_html( $choice['label'] ); ?></strong>
+						<span class="description"> — <?php echo esc_html( $choice['description'] ); ?></span>
+					</label>
+				<?php endforeach; ?>
+			</fieldset>
+			<p class="description">
+				<?php esc_html_e( 'Applies to new sign-ins. Choosing a shorter duration also revokes existing access tokens immediately.', 'abilities-bridge' ); ?>
+			</p>
+			<?php submit_button( __( 'Save Sign-in Duration', 'abilities-bridge' ), 'secondary', 'submit', false ); ?>
+		</form>
+		<?php
 	}
 
 	/**
@@ -1370,6 +1482,8 @@ class Abilities_Bridge_Settings_Page {
 				<p><?php esc_html_e( 'In Claude, click the Connect button. You will be redirected to your website to authorize the connection, then redirected back to Claude where the connection should be successful.', 'abilities-bridge' ); ?></p>
 			</div>
 
+			<?php $this->render_token_lifetime_setting(); ?>
+
 			<?php if ( ! empty( $existing_clients ) ) : ?>
 				<h3 style="margin-top: 30px;"><?php esc_html_e( 'Manage Client Credentials', 'abilities-bridge' ); ?></h3>
 				<p><?php esc_html_e( 'View and revoke your active OAuth client credentials.', 'abilities-bridge' ); ?></p>
@@ -1490,6 +1604,15 @@ class Abilities_Bridge_Settings_Page {
 				</ol>
 			</div>
 
+			<p class="description" style="margin-top: 20px;">
+				<?php
+				printf(
+					/* translators: %s: link to the Connect Claude tab. */
+					esc_html__( 'How long ChatGPT stays signed in is controlled by the sign-in duration setting on the %s tab; it applies to both connections.', 'abilities-bridge' ),
+					'<a href="' . esc_url( add_query_arg( array( 'tab' => 'anthropic-mcp' ), admin_url( 'admin.php?page=abilities-bridge-settings' ) ) ) . '">' . esc_html__( 'Connect Claude', 'abilities-bridge' ) . '</a>'
+				);
+				?>
+			</p>
 			<?php if ( ! empty( $existing_clients ) ) : ?>
 				<h3 style="margin-top: 30px;"><?php esc_html_e( 'Manage ChatGPT Client Credentials', 'abilities-bridge' ); ?></h3>
 				<table class="widefat" style="margin-top: 15px;">
